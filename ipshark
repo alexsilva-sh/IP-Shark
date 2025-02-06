@@ -1,0 +1,115 @@
+import requests
+import pyperclip
+
+# Substitua 'YOUR_ABUSEIPDB_API_KEY', 'YOUR_VIRUSTOTAL_API_KEY' e 'YOUR_IPINFO_API_KEY' pelas suas chaves de API
+ABUSEIPDB_API_KEY = 'SUA_API'
+VIRUSTOTAL_API_KEY = 'SUA_API'
+IPINFO_API_KEY = 'SUA_API'
+
+def check_ip_abuseipdb(ip):
+    url = f'https://api.abuseipdb.com/api/v2/check'
+    headers = {
+        'Accept': 'application/json',
+        'Key': ABUSEIPDB_API_KEY
+    }
+    params = {
+        'ipAddress': ip,
+        'maxAgeInDays': 90
+    }
+    response = requests.get(url, headers=headers, params=params)
+    return response.json()
+
+def check_ip_virustotal(ip):
+    url = f'https://www.virustotal.com/api/v3/ip_addresses/{ip}'
+    headers = {
+        'x-apikey': VIRUSTOTAL_API_KEY
+    }
+    response = requests.get(url, headers=headers)
+    return response.json()
+
+def get_location_from_ipinfo(ip):
+    url = f'https://ipinfo.io/{ip}/json'
+    headers = {
+        'Authorization': f'Bearer {IPINFO_API_KEY}'
+    }
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    city = data.get('city', 'N/A')
+    country_code = data.get('country', 'N/A')
+    
+    # Converter código do país para nome completo
+    country_name = convert_country_code_to_name(country_code)
+    
+    return city, country_name
+
+def convert_country_code_to_name(country_code):
+    url = f'https://restcountries.com/v3.1/alpha/{country_code}'
+    response = requests.get(url)
+    data = response.json()
+    country_name = data[0]['name']['common'] if response.status_code == 200 else country_code
+    return country_name
+
+def format_output(abuseipdb_result, virustotal_result, city, country):
+    abuse_confidence_score = abuseipdb_result['data']['abuseConfidenceScore']
+    domain = abuseipdb_result['data']['domain']
+    
+    abuseipdb_link = f"https://www.abuseipdb.com/check/{abuseipdb_result['data']['ipAddress']}"
+    virustotal_link = f"https://www.virustotal.com/gui/ip-address/{virustotal_result['data']['id']}"
+    
+    virustotal_analysis_stats = virustotal_result['data']['attributes']['last_analysis_stats']
+    virustotal_abuse_score = virustotal_analysis_stats['malicious'] + virustotal_analysis_stats['suspicious']
+    
+    if abuse_confidence_score > 0 or virustotal_abuse_score > 0:
+        output = f"""
+Análise:
+- O Endereço IP foi consultado nas bases de IOC e foi encontrada má reputação.
+
+Score de abuso AbuseIPDB: {abuse_confidence_score}%
+Score de abuso VirusTotal: {virustotal_abuse_score}
+Nome de domínio: {domain}
+País: {country}
+Cidade: {city}
+        
+Referências:
+- AbuseIPDB: {abuseipdb_link}
+- VirusTotal: {virustotal_link}
+"""
+    else:
+        output = f"""
+Análise:
+- O Endereço IP foi consultado nas bases de IOC e NÃO foi encontrada má reputação.
+
+Score de abuso AbuseIPDB: {abuse_confidence_score}%
+Score de abuso VirusTotal: {virustotal_abuse_score}
+Nome de domínio: {domain}
+País: {country}
+Cidade: {city}
+
+Referências:
+- AbuseIPDB: {abuseipdb_link}
+- VirusTotal: {virustotal_link}
+"""
+    return output
+
+def main():
+    while True:
+        ip = input("Digite o IP que deseja consultar: ")
+        abuseipdb_result = check_ip_abuseipdb(ip)
+        virustotal_result = check_ip_virustotal(ip)
+        city, country = get_location_from_ipinfo(ip)
+        
+        formatted_output = format_output(abuseipdb_result, virustotal_result, city, country)
+        
+        print(formatted_output)
+        
+        # Copiar o resultado para a área de transferência
+        pyperclip.copy(formatted_output)
+        print("O resultado foi copiado para a área de transferência.")
+        
+        # Perguntar ao usuário se deseja consultar outro IP
+        another = input("Deseja consultar outro IP? (s/n): ").strip().lower()
+        if another != 's':
+            break
+
+if __name__ == "__main__":
+    main()
