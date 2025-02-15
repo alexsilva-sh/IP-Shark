@@ -57,19 +57,20 @@ def format_output(abuseipdb_result, virustotal_result, city, country):
     virustotal_link = f"https://www.virustotal.com/gui/ip-address/{virustotal_result['data']['id']}"
     
     virustotal_analysis_stats = virustotal_result['data']['attributes']['last_analysis_stats']
-    virustotal_abuse_score = virustotal_analysis_stats['malicious'] + virustotal_analysis_stats['suspicious']
+    virustotal_abuse_score = virustotal_analysis_stats['malicious'] #+ virustotal_analysis_stats['suspicious']
     
     if abuse_confidence_score > 0 or virustotal_abuse_score > 0:
         output = f"""
 Análise:
 - O Endereço IP foi consultado nas bases de IOC e foi encontrada má reputação.
+- Chamado aberto para a equipe de MSS realizar o bloqueio do IP: 
 
 Score de abuso AbuseIPDB: {abuse_confidence_score}%
 Score de abuso VirusTotal: {virustotal_abuse_score}
 Nome de domínio: {domain}
 País: {country}
 Cidade: {city}
-        
+
 Referências:
 - AbuseIPDB: {abuseipdb_link}
 - VirusTotal: {virustotal_link}
