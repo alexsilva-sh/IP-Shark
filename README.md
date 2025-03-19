@@ -64,3 +64,6 @@ Desenvolvido por [alexsilva-sh](https://github.com/alexsilva-sh).
 * `requests`
 * `pyperclip`
 * `ipaddress`
+
+## Licença
+IPshark é distribuído sob a licença MIT. Consulte o arquivo `LICENSE` para mais detalhes.
