@@ -1,12 +1,36 @@
 import requests
 import pyperclip
+import ipaddress
 
-# Substitua 'YOUR_ABUSEIPDB_API_KEY', 'YOUR_VIRUSTOTAL_API_KEY' e 'YOUR_IPINFO_API_KEY' pelas suas chaves de API
-ABUSEIPDB_API_KEY = 'SUA_API'
-VIRUSTOTAL_API_KEY = 'SUA_API'
-IPINFO_API_KEY = 'SUA_API'
+# Substitua 'ABUSEIPDB_API_KEY', 'VIRUSTOTAL_API_KEY' e 'IPINFO_API_KEY' pelas suas chaves de API
+ABUSEIPDB_API_KEY = 'ABUSEIPDB_API_KEY'
+VIRUSTOTAL_API_KEY = 'VIRUSTOTAL_API_KEY'
+IPINFO_API_KEY = 'IPINFO_API_KEY'
+
+def is_valid_ip(ip):
+    """
+    Verifica se uma string representa um endereço IP válido.
+
+    Args:
+        ip (str): A string a ser verificada.
+
+    Returns:
+        bool: True se o IP for válido, False caso contrário.
+    """
+    try:
+        ipaddress.ip_address(ip)
+        return True
+    except ValueError:
+        return False
 
 def check_ip_abuseipdb(ip):
+    """
+    Consulta a API AbuseIPDB para obter informações sobre um endereço IP.
+    Args:
+        ip (str): O endereço IP a ser consultado.
+    Returns:
+        dict: Dados da API AbuseIPDB em formato JSON, ou None em caso de erro.
+    """
     url = f'https://api.abuseipdb.com/api/v2/check'
     headers = {
         'Accept': 'application/json',
@@ -16,101 +40,191 @@ def check_ip_abuseipdb(ip):
         'ipAddress': ip,
         'maxAgeInDays': 90
     }
-    response = requests.get(url, headers=headers, params=params)
-    return response.json()
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Erro na requisição AbuseIPDB: {e}")
+        return None
+    except ValueError as e:
+        print(f"Erro ao decodificar JSON da AbuseIPDB: {e}")
+        return None
 
 def check_ip_virustotal(ip):
+    """
+    Consulta a API VirusTotal para obter informações sobre um endereço IP.
+    Args:
+        ip (str): O endereço IP a ser consultado.
+    Returns:
+        dict: Dados da API VirusTotal em formato JSON, ou None em caso de erro.
+    """
     url = f'https://www.virustotal.com/api/v3/ip_addresses/{ip}'
     headers = {
         'x-apikey': VIRUSTOTAL_API_KEY
     }
-    response = requests.get(url, headers=headers)
-    return response.json()
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Erro na requisição VirusTotal: {e}")
+        return None
+    except ValueError as e:
+        print(f"Erro ao decodificar JSON da VirusTotal: {e}")
+        return None
 
 def get_location_from_ipinfo(ip):
+    """
+    Obtém informações de localização de um endereço IP usando a API IPinfo.
+    Args:
+        ip (str): O endereço IP a ser consultado.
+    Returns:
+        tuple: Uma tupla contendo a cidade e o país (nome) do IP, ou 'N/A', 'N/A' em caso de erro.
+    """
     url = f'https://ipinfo.io/{ip}/json'
     headers = {
         'Authorization': f'Bearer {IPINFO_API_KEY}'
     }
-    response = requests.get(url, headers=headers)
-    data = response.json()
-    city = data.get('city', 'N/A')
-    country_code = data.get('country', 'N/A')
-    
-    # Converter código do país para nome completo
-    country_name = convert_country_code_to_name(country_code)
-    
-    return city, country_name
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        city = data.get('city', 'N/A')
+        country_code = data.get('country', 'N/A')
+        country_name = convert_country_code_to_name(country_code)
+        return city, country_name
+    except requests.exceptions.RequestException as e:
+        print(f"Erro na requisição ipinfo: {e}")
+        return 'N/A', 'N/A'
+    except ValueError as e:
+        print(f"Erro ao decodificar JSON da ipinfo: {e}")
+        return 'N/A', 'N/A'
 
 def convert_country_code_to_name(country_code):
-    url = f'https://restcountries.com/v3.1/alpha/{country_code}'
-    response = requests.get(url)
-    data = response.json()
-    country_name = data[0]['name']['common'] if response.status_code == 200 else country_code
-    return country_name
+    """
+    Converte um código de país (ISO 3166-1 alpha-2) para o nome completo do país.
+    Args:
+        country_code (str): O código do país.
+    Returns:
+        str: O nome completo do país, ou o código do país em caso de erro.
+    """
+    if country_code == 'N/A':
+        return 'N/A'
+    try:
+        url = f'https://restcountries.com/v3.1/alpha/{country_code}'
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        if data:
+            return data[0]['name']['common']
+        else:
+            return country_code
+    except requests.exceptions.RequestException as e:
+        print(f"Erro ao obter nome do país: {e}")
+        return country_code
+    except (ValueError, IndexError) as e:
+        print(f"Erro ao processar dados do país: {e}")
+        return country_code
 
-def format_output(abuseipdb_result, virustotal_result, city, country):
-    abuse_confidence_score = abuseipdb_result['data']['abuseConfidenceScore']
-    domain = abuseipdb_result['data']['domain']
-    
-    abuseipdb_link = f"https://www.abuseipdb.com/check/{abuseipdb_result['data']['ipAddress']}"
-    virustotal_link = f"https://www.virustotal.com/gui/ip-address/{virustotal_result['data']['id']}"
-    
-    virustotal_analysis_stats = virustotal_result['data']['attributes']['last_analysis_stats']
-    virustotal_abuse_score = virustotal_analysis_stats['malicious'] #+ virustotal_analysis_stats['suspicious']
-    
-    if abuse_confidence_score > 0 or virustotal_abuse_score > 0:
-        output = f"""
-Análise:
-- O Endereço IP foi consultado nas bases de IOC e foi encontrada má reputação.
-- Chamado aberto para a equipe de MSS realizar o bloqueio do IP: 
+def format_output(ip, abuseipdb_result, virustotal_result, city, country, index):
+    """
+    Formata os resultados das APIs para exibição.
+    Args: ...
+    Returns:
+        str: A string formatada com os resultados.
+    """
+    if abuseipdb_result and virustotal_result:
+        try:
+            abuse_confidence_score = abuseipdb_result['data']['abuseConfidenceScore']
+            domain = abuseipdb_result['data'].get('domain', 'N/A')
+            abuseipdb_link = f"https://www.abuseipdb.com/check/{abuseipdb_result['data']['ipAddress']}"
+            virustotal_link = f"https://www.virustotal.com/gui/ip-address/{virustotal_result['data']['id']}"
+            virustotal_analysis_stats = virustotal_result['data']['attributes']['last_analysis_stats']
+            virustotal_abuse_score = virustotal_analysis_stats['malicious']
+            is_whitelisted = abuseipdb_result['data'].get('isWhitelisted', None)
 
-Score de abuso AbuseIPDB: {abuse_confidence_score}%
-Score de abuso VirusTotal: {virustotal_abuse_score}
+            whitelisted_status = "Sim" if is_whitelisted else "Não" if is_whitelisted is not None else "Não verificado"
+
+            if abuse_confidence_score > 0 or virustotal_abuse_score > 0:
+                output = f"""
+[{index}] {ip} - possui má reputação
+IP em Whitelist no AbuseIPDB: {whitelisted_status}
+Score no AbuseIPDB: {abuse_confidence_score}%
+Score no VirusTotal: {virustotal_abuse_score}
 Nome de domínio: {domain}
 País: {country}
 Cidade: {city}
-
-Referências:
-- AbuseIPDB: {abuseipdb_link}
-- VirusTotal: {virustotal_link}
-"""
+- {abuseipdb_link}
+- {virustotal_link} """
+            else:
+                output = f"""
+[{index}] {ip} - NÃO possui má reputação
+IP em Whitelist no AbuseIPDB: {whitelisted_status}
+Score no AbuseIPDB: {abuse_confidence_score}%
+Score no VirusTotal: {virustotal_abuse_score}
+Nome de domínio: {domain}
+País: {country}
+Cidade: {city}
+- {abuseipdb_link}
+- {virustotal_link} """
+            return output
+        except (KeyError, TypeError) as e:
+            return f"Erro ao formatar a saída: {e}"
     else:
-        output = f"""
-Análise:
-- O Endereço IP foi consultado nas bases de IOC e NÃO foi encontrada má reputação.
-
-Score de abuso AbuseIPDB: {abuse_confidence_score}%
-Score de abuso VirusTotal: {virustotal_abuse_score}
-Nome de domínio: {domain}
-País: {country}
-Cidade: {city}
-
-Referências:
-- AbuseIPDB: {abuseipdb_link}
-- VirusTotal: {virustotal_link}
-"""
-    return output
+        return "Erro ao obter dados das APIs."
 
 def main():
+    """
+    Função principal que coordena a execução do programa.
+    """
+    print("""                                                                        
+              ########                              
+              ############                          
+              ##############                        
+              ################                                  
+  _____ _____     _____ _                _    
+ |_   _|  __  |  / ____| |              | |   
+   | | | |__) | | (___ | |__   __ _ _ __| | __
+   | | |  ___/   |___ || '_ | | _` | '__| |/ /
+  _| |_| |       ____) | | | | (_| | |  |   /
+ |_____|_|      |_____/|_| |_||__,_|_|  |_||_|
+              #######################                
+              ###########################                       
+              ##############################          
+              #################################          
+              ######################################      
+              ##########################################      
+              # Desenvolvido por @alexsilva-sh #############
+              # Contribua https://github.com/alexsilva-sh/ #####
+    """)
+
     while True:
-        ip = input("Digite o IP que deseja consultar: ")
-        abuseipdb_result = check_ip_abuseipdb(ip)
-        virustotal_result = check_ip_virustotal(ip)
-        city, country = get_location_from_ipinfo(ip)
-        
-        formatted_output = format_output(abuseipdb_result, virustotal_result, city, country)
-        
-        print(formatted_output)
-        
-        # Copiar o resultado para a área de transferência
-        pyperclip.copy(formatted_output)
-        print("O resultado foi copiado para a área de transferência.")
-        
-        # Perguntar ao usuário se deseja consultar outro IP
-        another = input("Deseja consultar outro IP? (s/n): ").strip().lower()
-        if another != 's':
+        ips_input = input("Digite os IPs que deseja consultar (separados por vírgula) ou 'sair' para encerrar: ")
+        if ips_input.lower() == 'sair':
             break
 
+        ips = [ip.strip() for ip in ips_input.split(',')]
+
+        all_outputs = ""
+        for index, ip in enumerate(ips, 1):
+            if not is_valid_ip(ip):
+                print(f"IP inválido: {ip}. Pulando.")
+                continue
+
+            abuseipdb_result = check_ip_abuseipdb(ip)
+            virustotal_result = check_ip_virustotal(ip)
+            city, country = get_location_from_ipinfo(ip)
+
+            formatted_output = format_output(ip, abuseipdb_result, virustotal_result, city, country, index)
+            all_outputs += formatted_output + "\n"
+
+        print(all_outputs)
+        pyperclip.copy(all_outputs)
+        print("O resultado foi copiado para a área de transferência.")
+        print("#######################################################################################################")
+        print("#######################################################################################################")
+        print(" ")
+        print(" ")
 if __name__ == "__main__":
     main()
