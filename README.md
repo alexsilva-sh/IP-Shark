@@ -4,7 +4,7 @@
 [![GitHub Issues](https://img.shields.io/github/issues/alexsilva-sh/IPshark)](https://github.com/alexsilva-sh/IPshark/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/alexsilva-sh/IPshark)](https://github.com/alexsilva-sh/IPshark/pulls)
 
-#### *Análise de Reputação de IPs*
+#### Análise de Reputação de IPs
 
 IPshark é uma ferramenta Python simples e intuitiva para analisar a reputação de endereços IP usando APIs de serviços como AbuseIPDB, VirusTotal e IPinfo. Ele permite que você obtenha informações sobre a reputação de um IP, sua localização e outros detalhes relevantes diretamente do seu terminal.
 
