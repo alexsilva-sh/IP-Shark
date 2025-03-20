@@ -1,8 +1,8 @@
 # IPshark
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![GitHub Issues](https://img.shields.io/github/issues/alexsilva-sh/IPshark)](https://github.com/alexsilva-sh/IPshark/issues)
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/alexsilva-sh/IPshark)](https://github.com/alexsilva-sh/IPshark/pulls)
+[![GitHub Issues](https://img.shields.io/github/issues/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/issues)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/pulls)
 
 #### Análise de Reputação de IPs
 
