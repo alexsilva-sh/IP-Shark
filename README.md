@@ -7,10 +7,11 @@
 #### Análise de Reputação de IPs
 
 IPshark é uma ferramenta Python simples e intuitiva para analisar a reputação de endereços IP usando APIs de serviços como AbuseIPDB, VirusTotal e IPinfo. Ele permite que você obtenha informações sobre a reputação de um IP, sua localização e outros detalhes relevantes diretamente do seu terminal.
-Obtenha as chaves API dos serviços mencionados:
-API do IPinfo: https://ipinfo.io/
-API do VirusTotal: https://www.virustotal.com/gui/home/upload
-API do AbuseIPDB: https://www.abuseipdb.com/account/api
+
+## Obtenha as chaves API dos serviços mencionados:
+# API do IPinfo: https://ipinfo.io/
+# API do VirusTotal: https://www.virustotal.com/gui/home/upload
+# API do AbuseIPDB: https://www.abuseipdb.com/account/api
 
 
 ## Demonstração
