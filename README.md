@@ -6,13 +6,11 @@
 
 #### Análise de Reputação de IPs
 
-IPshark é uma ferramenta Python simples e intuitiva para analisar a reputação de endereços IP usando APIs de serviços como AbuseIPDB, VirusTotal e IPinfo. Ele permite que você obtenha informações sobre a reputação de um IP, sua localização e outros detalhes relevantes diretamente do seu terminal.
+IPshark é uma ferramenta Python simples e intuitiva para analisar a reputação de endereços IP usando APIs de serviços como AbuseIPDB e VirusTotal. Ele permite que você obtenha informações sobre a reputação de um IP diretamente do seu terminal.
 
 ## Obtenha as chaves API dos serviços mencionados:
-- API do IPinfo: https://ipinfo.io/
 - API do VirusTotal: https://www.virustotal.com/gui/home/upload
 - API do AbuseIPDB: https://www.abuseipdb.com/account/api
-
 
 ## Demonstração
 
@@ -25,7 +23,7 @@ IPshark está em desenvolvimento ativo. Sinta-se à vontade para contribuir com 
 1.  Clone o repositório:
 
     ```bash
-    git clone [https://github.com/alexsilva-sh/IPshark.git](https://www.google.com/search?q=https://github.com/alexsilva-sh/IPshark.git)
+    git clone [https://github.com/alexsilva-sh/IPshark.git](https://github.com/alexsilva-sh/IPshark.git)
     cd IPshark
     ```
 
@@ -35,7 +33,7 @@ IPshark está em desenvolvimento ativo. Sinta-se à vontade para contribuir com 
     pip install requests pyperclip ipaddress
     ```
 
-3.  Substitua as chaves de API no código (`ABUSEIPDB_API_KEY`, `VIRUSTOTAL_API_KEY` e `IPINFO_API_KEY`) pelas suas próprias chaves.
+3.  Substitua as chaves de API no código (`ABUSEIPDB_API_KEY` e `VIRUSTOTAL_API_KEY`) pelas suas próprias chaves.
 
 4.  Execute o script:
 
@@ -49,8 +47,7 @@ IPshark está em desenvolvimento ativo. Sinta-se à vontade para contribuir com 
 
 * Validação de endereços IP.
 * Consulta de reputação em AbuseIPDB e VirusTotal.
-* Obtenção de informações de localização via IPinfo.
-* Formatação de saída com detalhes de reputação e localização.
+* Formatação de saída com detalhes de reputação.
 * Cópia dos resultados para a área de transferência.
 
 ## Contribuindo
