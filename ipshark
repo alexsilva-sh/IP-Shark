@@ -1,6 +1,7 @@
 import requests
 import pyperclip
 import ipaddress
+from datetime import datetime, timedelta
 
 # Substitua 'api' pelas suas chaves de API
 ABUSEIPDB_API_KEY = 'api'
@@ -84,6 +85,15 @@ def format_output(ip, abuseipdb_result, virustotal_result, city, country, domain
 
         reputation_status = "possui má reputação" if abuse_confidence > 0 or vt_score > 0 else "NÃO possui má reputação"
 
+        # Formatação da data do último relatório
+        last_reported_at = abuseipdb_result['data'].get('lastReportedAt') if abuseipdb_result else None
+        if last_reported_at:
+            utc_time = datetime.fromisoformat(last_reported_at.replace('Z', '+00:00'))  # Adiciona +00:00 se terminar com 'Z'
+            brasilia_time = utc_time - timedelta(hours=3)  # Subtrai 3 horas para o fuso de Brasília
+            last_reported_at_formatted = brasilia_time.strftime('%d/%m/%Y %H:%M:%S')
+        else:
+            last_reported_at_formatted = 'Não disponível'
+
         output = f"""
 [{index}] {ip} - {reputation_status}
 IP em Whitelist no AbuseIPDB: {whitelisted}
@@ -92,6 +102,7 @@ Score no VirusTotal: {vt_score}
 Nome de domínio: {domain}
 País: {country}
 Cidade: {city}
+Último relatório no AbuseIPDB: {last_reported_at_formatted}
 - {abuseipdb_link}
 - {virustotal_link}"""
         return output
