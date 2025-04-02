@@ -20,26 +20,25 @@ IPshark está em desenvolvimento ativo. Sinta-se à vontade para contribuir com 
 
 ## Como usar
 
-1.  Clone o repositório:
+1.  Instalar o python:
 
-    ```bash
-    git clone [https://github.com/alexsilva-sh/IPshark.git](https://github.com/alexsilva-sh/IPshark.git)
-    cd IPshark
-    ```
+    - Instale a partir do programa do windows "Microsoft Store", para simplificar o processo de integração do python no cmd.
 
-2.  Instale as dependências:
+2.  Instale as dependências.
 
+    - Abra o CMD e faça o comando abaixo:
     ```bash
     pip install requests pyperclip ipaddress
     ```
 
-3.  Substitua as chaves de API no código (`ABUSEIPDB_API_KEY` e `VIRUSTOTAL_API_KEY`) pelas suas próprias chaves.
+3.  Substitua as chaves de API no código (`api`) pelas suas próprias chaves.
 
 4.  Execute o script:
 
     ```bash
     python ipshark.py
     ```
+    - Ou abra o arquivo ipshark.py diretamente no explorador de arquivos, ou pesquisando "ipshark.py" no menu iniciar do windows.
 
 5.  Digite os IPs que deseja consultar, separados por vírgula, ou 'sair' para encerrar.
 
