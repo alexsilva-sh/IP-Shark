@@ -4,65 +4,44 @@
 [![GitHub Issues](https://img.shields.io/github/issues/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/pulls)
 
-#### Análise de Reputação de IPs
+## Análise Avançada de Reputação de IPs com IPshark
 
-IPshark é uma ferramenta Python simples e intuitiva para analisar a reputação de endereços IP usando APIs de serviços como AbuseIPDB e VirusTotal. Ele permite que você obtenha informações sobre a reputação de um IP diretamente do seu terminal.
+IPshark é uma ferramenta Python robusta e intuitiva para analisar a reputação de endereços IP, integrando múltiplas fontes de inteligência de ameaças. Utilizando as APIs do AbuseIPDB, VirusTotal e IBM X-Force (via web scraping com Selenium), além de informações de geolocalização do IPinfo, o IPshark oferece uma visão abrangente da reputação de um IP diretamente no seu terminal ou através de uma interface gráfica amigável. Os resultados podem ser visualizados no terminal e opcionalmente salvos em um arquivo CSV.
 
-## Obtenha as chaves API dos serviços mencionados:
-- API do VirusTotal: https://www.virustotal.com/gui/home/upload
-- API do AbuseIPDB: https://www.abuseipdb.com/account/api
+## Funcionalidades Principais
 
-## Demonstração
+* **Validação de IPs:** Garante que os endereços IP inseridos sejam válidos e públicos.
+* **Consulta de Reputação Multi-Fonte:**
+    * **AbuseIPDB:** Obtém informações de relatórios de abuso de IP.
+    * **VirusTotal:** Analisa a reputação do IP com base em múltiplos antivírus e scanners de malware.
+    * **IBM X-Force:** Consulta a pontuação de risco do IP através de web scraping.
+* **Geolocalização Avançada:** Determina a localização do IP (cidade e país) usando a API IPinfo.io.
+* **Tradução de Países:** Traduz nomes de países para português utilizando uma API dedicada.
+* **Geração de CSV:** Salva os resultados detalhados em um arquivo CSV para análise e relatórios futuros.
+* **Verificação de Whitelisting (AbuseIPDB):** Indica se um IP está na lista de permissões do AbuseIPDB.
+* **Formatação de Tempo:** Exibe a data da última denúncia no fuso horário de Brasília.
+* **Detecção de IPs Privados:** Informa se o IP inserido é privado e não será consultado externamente.
+* **Execução Paralela:** Utiliza threads para realizar consultas ao AbuseIPDB e VirusTotal simultaneamente, acelerando o processo.
+* **Carregamento de Chaves de API via `.env`:** Permite armazenar suas chaves de API de forma segura em um arquivo `.env`.
 
-IPshark está em desenvolvimento ativo. Sinta-se à vontade para contribuir com melhorias, correções de bugs e novas funcionalidades.
+## Obtenha as Chaves de API
 
-**Atenção:** As APIs utilizadas em IPshark têm limites de requisição. Consulte a documentação de cada serviço para mais informações.
+Para utilizar o IPshark em sua totalidade, você precisará das chaves de API dos seguintes serviços:
 
-## Como usar
+* **VirusTotal:** [https://www.virustotal.com/gui/home/upload](https://www.virustotal.com/gui/home/upload)
+* **AbuseIPDB:** [https://www.abuseipdb.com/account/api](https://www.abuseipdb.com/account/api)
+* **IPinfo:** [https://ipinfo.io/signup](https://ipinfo.io/signup)
 
-1.  Instalar o python:
+No arquivo chamado `api.env` no mesmo diretório do script, edite com bloco de notas para inserir suas chaves em:
+ABUSEIPDB_API_KEY=sua_api
+VIRUSTOTAL_API_KEY=sua_api
+IPINFO_API_KEY=sua_api
 
-    - Instale a partir do programa do windows "Microsoft Store", para simplificar o processo de integração do python no cmd.
+## Como Usar
 
-2.  Instale as dependências.
-
-    - Abra o CMD e faça o comando abaixo:
-    ```bash
-    pip install requests pyperclip ipaddress
-    ```
-
-3.  Substitua as chaves de API no código (`api`) pelas suas próprias chaves.
-
-4.  Execute o script:
-
-    ```bash
-    python ipshark.py
-    ```
-    - Ou abra o arquivo ipshark.py diretamente no explorador de arquivos, ou pesquisando "ipshark.py" no menu iniciar do windows.
-
-5.  Digite os IPs que deseja consultar, separados por vírgula, ou 'sair' para encerrar.
-
-## Funcionalidades
-
-* Validação de endereços IP.
-* Consulta de reputação em AbuseIPDB e VirusTotal.
-* Formatação de saída com detalhes de reputação.
-* Cópia dos resultados para a área de transferência.
-
-## Contribuindo
-
-Contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou enviar pull requests.
-
-## Licença
-
-IPshark é distribuído sob a licença MIT. Consulte o arquivo `LICENSE` para mais detalhes.
-
-## Autor
-
-Desenvolvido por [alexsilva-sh](https://github.com/alexsilva-sh).
-
-## Dependências
-
-* `requests`
-* `pyperclip`
-* `ipaddress`
+**Execute o ipshark.exe:**
+  - Digite os IPs na caixa de texto, separados por vírgula.
+    - Marque a opção "Consultar com IBM X-Force" se desejar incluir essa análise.
+    - Clique em "🔍 Realizar consulta".
+    - Os resultados serão exibidos na área de saída.
+    - Utilize os botões para copiar os resultados ou exportá-los para um arquivo CSV.
