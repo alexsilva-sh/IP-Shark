@@ -33,9 +33,7 @@ Para utilizar o IPshark em sua totalidade, você precisará das chaves de API do
 * **IPinfo:** [https://ipinfo.io/signup](https://ipinfo.io/signup)
 
 No arquivo chamado `api.env` no mesmo diretório do script, edite com bloco de notas para inserir suas chaves em:
-`ABUSEIPDB_API_KEY=sua_api`
-`VIRUSTOTAL_API_KEY=sua_api`
-`IPINFO_API_KEY=sua_api`
+`ABUSEIPDB_API_KEY=sua_api`, `VIRUSTOTAL_API_KEY=sua_api` e `IPINFO_API_KEY=sua_api`
 
 ## Como Usar
 
