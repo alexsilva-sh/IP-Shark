@@ -6,7 +6,7 @@
 
 ## Análise Avançada de Reputação de IPs com IPshark
 
-IPshark é uma ferramenta Python robusta e intuitiva para analisar a reputação de endereços IP, integrando múltiplas fontes de inteligência de ameaças. Utilizando as APIs do AbuseIPDB, VirusTotal e IBM X-Force (via web scraping com Selenium), além de informações de geolocalização do IPinfo, o IPshark oferece uma visão abrangente da reputação de um IP diretamente no seu terminal ou através de uma interface gráfica amigável. Os resultados podem ser visualizados no terminal e opcionalmente salvos em um arquivo CSV.
+IPshark é uma ferramenta Python robusta e intuitiva para analisar a reputação de endereços IP, integrando múltiplas fontes de inteligência de ameaças. Utilizando as APIs do AbuseIPDB, VirusTotal e IBM X-Force (via web scraping com Selenium), além de informações de geolocalização do IPinfo, o IPshark oferece uma visão abrangente da reputação de um IP diretamente no seu terminal ou através de uma interface gráfica amigável. Os resultados podem ser visualizados direto na interface e opcionalmente salvos em um arquivo CSV.
 
 ## Funcionalidades Principais
 
