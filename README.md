@@ -10,7 +10,6 @@ IPshark é uma ferramenta Python robusta e intuitiva para analisar a reputação
 
 ## Funcionalidades Principais
 
-* **Validação de IPs:** Garante que os endereços IP inseridos sejam válidos e públicos.
 * **Consulta de Reputação Multi-Fonte:**
     * **AbuseIPDB:** Obtém informações de relatórios de abuso de IP.
     * **VirusTotal:** Analisa a reputação do IP com base em múltiplos antivírus e scanners de malware.
@@ -23,6 +22,7 @@ IPshark é uma ferramenta Python robusta e intuitiva para analisar a reputação
 * **Detecção de IPs Privados:** Informa se o IP inserido é privado e não será consultado externamente.
 * **Execução Paralela:** Utiliza threads para realizar consultas ao AbuseIPDB e VirusTotal simultaneamente, acelerando o processo.
 * **Carregamento de Chaves de API via `.env`:** Permite armazenar suas chaves de API de forma segura em um arquivo `.env`.
+* * **Validação de IPs:** Garante que os endereços IP inseridos sejam válidos e públicos.
 
 ## Obtenha as Chaves de API
 
