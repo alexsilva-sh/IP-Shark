@@ -46,4 +46,6 @@ Para utilizar o IPshark em sua totalidade, você precisará das chaves de API do
     - Clique em "🔍 Realizar consulta".
     - Os resultados serão exibidos na área de saída.
     - Utilize os botões para copiar os resultados ou exportá-los para um arquivo CSV.
+   
+**Demonstração**
 ![Demonstração de uso](imagem.png)
