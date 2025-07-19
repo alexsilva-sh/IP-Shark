@@ -1,46 +1,68 @@
-# IPshark
+# 🦈 IP Shark v2.4.4
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/pulls)
 
-## Consulta de Reputação com IPshark
+Ferramenta Python com interface gráfica que permite analisar a reputação de **IPs**, **hashes de arquivos** e **URLs** utilizando diversas fontes confiáveis de inteligência de ameaças. A interface é intuitiva, suporta execução paralela e exportação em CSV, além de oferecer opções de pré-análises automáticas.
 
-IPshark é uma ferramenta Python robusta e intuitiva para analisar a reputação de endereços IP e hashes, integrando múltiplas fontes de inteligência de ameaças. Utilizando as APIs do AbuseIPDB, VirusTotal, AlienVault e IBM X-Force (via web scraping com Selenium), além de informações de geolocalização do IPinfo, o IPshark oferece uma visão abrangente da reputação de um IP através de uma interface gráfica amigável. Os resultados podem ser visualizados direto na interface e opcionalmente salvos em um arquivo CSV.
+---
 
-## Funcionalidades Principais
+## 🔍 Funcionalidades Principais
 
-* **Consulta de Reputação Multi-Fonte:**
-    * **AbuseIPDB:** Obtém informações de relatórios de abuso de IP.
-    * **VirusTotal:** Analisa a reputação do IP ou hash com base em múltiplos antivírus e scanners de malware.
-    * **IBM X-Force:** Consulta a pontuação de risco do IP através de web scraping.
-    * **AlienVault:** Analisa a reputação da hash.
-* **Geolocalização Avançada:** Determina a localização do IP (cidade e país) usando a API IPinfo.io.
-* **Tradução de Países:** Traduz nomes de países para português utilizando uma API dedicada.
-* **Geração de CSV:** Salva os resultados detalhados em um arquivo CSV para análise e relatórios futuros.
-* **Verificação de Whitelisting (AbuseIPDB):** Indica se um IP está na lista de permissões do AbuseIPDB.
-* **Formatação de Tempo:** Exibe a data da última denúncia no fuso horário de Brasília.
-* **Execução Paralela:** Utiliza threads para realizar consultas ao AbuseIPDB e VirusTotal simultaneamente, acelerando o processo.
-* **Carregamento de Chaves de API via `.env`:** Permite armazenar suas chaves de API de forma segura em um arquivo `.env`.
-* **Validação de IPs:** Garante que os endereços IP inseridos sejam válidos e públicos.
+### ✅ Análise de IPs
+- **AbuseIPDB**: Score de abuso e verificação de whitelist.
+- **VirusTotal**: Detecção por múltiplos antivírus.
+- **IBM X-Force**: Score de risco (via Selenium).
+- **IPinfo**: Localização do IP (cidade, país).
+- **Tradução de Países**: Via APIcountries para português.
+- **Formatação de data da última denúncia** no fuso de Brasília.
+- **Exportação CSV** com todos os dados e links.
 
-## Obtenha as Chaves de API
+### 🧪 Análise de Hashes (MD5, SHA1, SHA256)
+- **VirusTotal**: Score, nome do arquivo, data da última análise.
+- **IBM X-Force**: Nível de risco.
+- **AlienVault**: Quantidade de pulsos relacionados.
+- **JoeSandbox**: Detecção de relatórios disponíveis.
+- **Exportação CSV** com todos os links.
+- **Pré-análise com recomendações automáticas**.
 
-Para utilizar o IPshark em sua totalidade, você precisará das chaves de API dos seguintes serviços:
+### 🌐 Análise de URLs
+- **VirusTotal**: Score de reputação.
+- **IBM X-Force**: Score da URL (via Selenium).
+- **AlienVault**: Quantidade de pulsos relacionados à URL.
+- **Exportação CSV** com links.
 
-* **VirusTotal:** [https://www.virustotal.com/gui/home/upload](https://www.virustotal.com/gui/home/upload)
-* **AbuseIPDB:** [https://www.abuseipdb.com/account/api](https://www.abuseipdb.com/account/api)
-* **IPinfo:** [https://ipinfo.io/signup](https://ipinfo.io/signup)
-* **AlienVault:** [https://otx.alienvault.com/api](https://otx.alienvault.com/api)
+---
 
-## Como Usar
+## 📁 Funcionalidades Adicionais
 
-**Faça o download dos arquivos `api.env`, `ipshark.exe` e `shark.ico`.**
-* No arquivo chamado `api.env` no mesmo diretório do script, edite com bloco de notas para inserir suas chaves em:
-* `ABUSEIPDB_API_KEY=sua_api`
-* `VIRUSTOTAL_API_KEY=sua_api`
-* `IPINFO_API_KEY=sua_api`
-* `ALIENVAULT_API_KEY=sua_api`
+- Interface gráfica moderna com **modo escuro**.
+- **Execução paralela** com status dinâmico das consultas.
+- **Abas separadas** para IP, Hash e URL.
+- **Botão para interromper consultas** a qualquer momento.
+- **Atualização automática**: Verifica nova versão no GitHub.
+- **Validação automática** de IPs e hashes.
+- **Compatível com entrada por vírgula, espaço ou quebra de linha.**
+
+---
+
+## 🔐 Configuração de APIs
+
+Crie um arquivo chamado `.env` no mesmo diretório do executável com o seguinte conteúdo:
+
+``env
+ABUSEIPDB_API_KEY=xxxxx
+VIRUSTOTAL_API_KEY=xxxxx
+IPINFO_API_KEY=xxxxx
+ALIENVAULT_API_KEY=xxxxx``
+
+Você pode obter suas chaves nos links abaixo:
+
+- [VirusTotal](https://www.virustotal.com/gui/home/upload)
+- [AbuseIPDB](https://www.abuseipdb.com/account/api)
+- [IPinfo](https://ipinfo.io/signup)
+- [AlienVault](https://otx.alienvault.com/api)
 
 **Execute o ipshark.exe:**
   - Digite os IPs na caixa de texto, separados por vírgula.
