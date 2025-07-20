@@ -1,4 +1,4 @@
-# 🦈 IP Shark v2.4.4
+# 🦈 IP Shark v2.4.5
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/issues)
