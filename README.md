@@ -51,11 +51,11 @@ Ferramenta Python com interface gráfica que permite analisar a reputação de *
 
 Crie um arquivo chamado `.env` no mesmo diretório do executável com o seguinte conteúdo:
 
-``env
-ABUSEIPDB_API_KEY=xxxxx
-VIRUSTOTAL_API_KEY=xxxxx
-IPINFO_API_KEY=xxxxx
-ALIENVAULT_API_KEY=xxxxx``
+``env``
+`ABUSEIPDB_API_KEY=xxxxx`
+`VIRUSTOTAL_API_KEY=xxxxx`
+`IPINFO_API_KEY=xxxxx`
+`ALIENVAULT_API_KEY=xxxxx`
 
 Você pode obter suas chaves nos links abaixo:
 
