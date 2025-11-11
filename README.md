@@ -1,23 +1,23 @@
-# 🦈 IP Shark v2.4.5
+# 🦈 IP Shark v2.4.7
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/pulls)
 
-Ferramenta Python com interface gráfica que permite analisar a reputação de **IPs**, **hashes de arquivos** e **URLs** utilizando diversas fontes confiáveis de inteligência de ameaças. A interface é intuitiva, suporta execução paralela e exportação em CSV, além de oferecer opções de pré-análises automáticas.
-
+Ferramenta Python com interface gráfica (modo escuro) para análise de reputação de IPs, hashes e URLs, integrando múltiplas fontes de inteligência de ameaças.
+O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, IPinfo e JoeSandbox, com execução paralela, exportação de resultados e geração de recomendações automáticas.
 ---
 
 ## 🔍 Funcionalidades Principais
 
 ### ✅ Análise de IPs
-- **AbuseIPDB**: Score de abuso e verificação de whitelist.
-- **VirusTotal**: Detecção por múltiplos antivírus.
-- **IBM X-Force**: Score de risco (via Selenium).
-- **IPinfo**: Localização do IP (cidade, país).
-- **Tradução de Países**: Via APIcountries para português.
-- **Formatação de data da última denúncia** no fuso de Brasília.
-- **Exportação CSV** com todos os dados e links.
+- **AbuseIPDB**: Score de abuso, data da última denúncia e detecção de whitelist..
+- **VirusTotal**: Verificação em múltiplos motores antivírus.
+- **IBM X-Force**: Score de risco (consulta automatizada via Selenium).
+- **IPinfo**: Localização do IP (cidade e país).
+- Tradução automática de países via API Countries.
+- Exportação CSV com links diretos para todas as plataformas.
+- Pré-análise automática que recomenda bloqueio ou reporte ao MSS.
 
 ### 🧪 Análise de Hashes (MD5, SHA1, SHA256)
 - **VirusTotal**: Score, nome do arquivo, data da última análise.
@@ -32,24 +32,24 @@ Ferramenta Python com interface gráfica que permite analisar a reputação de *
 - **IBM X-Force**: Score da URL (via Selenium).
 - **AlienVault**: Quantidade de pulsos relacionados à URL.
 - **Exportação CSV** com links.
+- Resolução automática de IPs associados usando o DNS público do Google (https://dns.google/resolve) e socket.gethostbyname_ex().
+- Pré-análise automática com recomendações de bloqueio ou inspeção.
 
 ---
 
-## 📁 Funcionalidades Adicionais
-
-- Interface gráfica moderna com **modo escuro**.
-- **Execução paralela** com status dinâmico das consultas.
-- **Abas separadas** para IP, Hash e URL.
-- **Botão para interromper consultas** a qualquer momento.
-- **Atualização automática**: Verifica nova versão no GitHub.
-- **Validação automática** de IPs e hashes.
-- **Compatível com entrada por vírgula, espaço ou quebra de linha.**
+## ⚙️ Recursos Adicionais
+- Interface moderna com modo escuro total.
+- Execução paralela com status dinâmico das consultas.
+- Abas dedicadas para IP, Hash e URL.
+- Gerenciamento automático do ChromeDriver, com fechamento completo dos processos ao encerrar o programa.
+- Atualização automática: verificação de nova versão no GitHub.
+- Entrada flexível — aceita vírgulas, espaços ou quebras de linha.
 
 ---
 
 ## 🔐 Configuração de APIs
 
-Baixe e edite o arquivo chamado `.env` no mesmo diretório do executável com o seguinte conteúdo:  
+Crie (ou edite) o arquivo chamado `.env` no diretório `config` com o seguinte conteúdo:  
 `ABUSEIPDB_API_KEY=xxxxx`  
 `VIRUSTOTAL_API_KEY=xxxxx`  
 `IPINFO_API_KEY=xxxxx`  
@@ -63,12 +63,15 @@ Você pode obter suas chaves nos links abaixo:
 - [AlienVault](https://otx.alienvault.com/api)
 
 **Execute o ipshark.exe:**
-  - Digite os IPs na caixa de texto, separados por vírgula.
-    - Marque a opção "Consultar com IBM X-Force" se desejar incluir essa análise.
-    - Clique em "🔍 Realizar consulta".
-    - Os resultados serão exibidos na área de saída.
-    - Utilize os botões para copiar os resultados ou exportá-los para um arquivo CSV.
+1. Execute ipshark.exe (ou python ip_checker_gui_dark.py se estiver em ambiente Python).
+2. Escolha a aba IP, Hash ou URL.
+3. Cole os valores a serem consultados (separados por vírgula, espaço ou quebra de linha).
+4. Marque as opções desejadas (“IBM X-Force”, “Pré-análise”, “Cliente tem MSS?”).
+5. Clique em 🔍 Consultar para iniciar.
+6. Os resultados aparecerão na área de saída e poderão ser:
+   - Copiados para a área de transferência;
+   - Exportados para CSV;
+   - Interrompidos a qualquer momento.
    
 **Demonstração**
-
-![Demonstração de uso](imagem.png)
+![Demonstração de uso](assets/imagem.png)
