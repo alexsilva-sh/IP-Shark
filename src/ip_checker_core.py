@@ -26,10 +26,19 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
-    BASE_DIR = os.path.dirname(__file__)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-dotenv_path = os.path.join(BASE_DIR, 'api.env')
-load_dotenv(dotenv_path)
+possible_paths = [
+    os.path.join(BASE_DIR, 'config', 'api.env'),
+    os.path.join(BASE_DIR, '..', 'config', 'api.env')
+]
+dotenv_path = next((p for p in possible_paths if os.path.exists(p)), None)
+
+if dotenv_path:
+    load_dotenv(dotenv_path)
+    print(f"[INFO] Variáveis de API carregadas de: {dotenv_path}")
+else:
+    print(f"[ERRO] Arquivo api.env não encontrado. Verifique se ele está em /config/api.env")
 
 ABUSEIPDB_API_KEY = os.getenv('ABUSEIPDB_API_KEY')
 VIRUSTOTAL_API_KEY = os.getenv('VIRUSTOTAL_API_KEY')

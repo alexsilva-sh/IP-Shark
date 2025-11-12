@@ -913,7 +913,14 @@ def show_update_window(latest_version, novidades_texto):
 if __name__ == "__main__":
     root = tk.Tk()
     root.title(f"IP Shark {__version__} - by @alexsilva.sh in Github")
-    root.iconbitmap("shark.ico")
+    import os
+    icon_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'shark.ico')
+    icon_path = os.path.abspath(icon_path)
+    if os.path.exists(icon_path):
+        root.iconbitmap(icon_path)
+    else:
+        print(f"[AVISO] Ícone não encontrado em: {icon_path}")
+
     latest, novidades = check_latest_version()
     if latest:
         show_update_window(latest, novidades)
