@@ -17,7 +17,7 @@ import requests
 from urllib.parse import urlparse
 import socket
 
-__version__ = "v2.4.7"
+__version__ = "v2.4.8"
 
 def check_latest_version():
     try:
@@ -227,12 +227,12 @@ class IPCheckerApp:
         self.hash_cancel_button = tk.Button(self.hash_button_frame, text="🛑 Interromper Consulta", command=self.cancel_check_hash, bg="#aa0000", fg="white", font=label_font, relief=tk.FLAT)
         self.hash_cancel_button.grid(row=0, column=2, padx=10)
     
-        # Conteúdo da aba URL
-        self.url_button = tk.Button(self.tab_frame, text="Consulta URL", command=self.show_url_page, bg="#333333", fg="white", font=("Segoe UI", 10, "bold"), relief=tk.FLAT)
+        # Conteúdo da aba Domínio
+        self.url_button = tk.Button(self.tab_frame, text="Consulta Domínio", command=self.show_url_page, bg="#333333", fg="white", font=("Segoe UI", 10, "bold"), relief=tk.FLAT)
         self.url_button.grid(row=0, column=2, padx=5)
         self.page_url = tk.Frame(root, bg="#1e1e1e")
         self.page_url.pack_forget()
-        self.input_label_url = tk.Label(self.page_url, text="Cole as URLs (separadas por espaço, quebra de linha ou vírgula):", bg="#1e1e1e", fg="white", font=label_font)
+        self.input_label_url = tk.Label(self.page_url, text="Cole os domínios (separados por espaço, quebra de linha ou vírgula):", bg="#1e1e1e", fg="white", font=label_font)
         self.input_label_url.pack(pady=(10, 2))
         self.url_entry = tk.Entry(self.page_url, width=90, bg="#2d2d2d", fg="white", insertbackground='white', font=entry_font, relief=tk.FLAT)
         self.url_entry.pack(pady=5, padx=10, ipady=4)
@@ -249,7 +249,7 @@ class IPCheckerApp:
         self.mss_url_switch = ToggleSwitch(col_url, text="Cliente tem MSS?", variable=self.mss_var_url, state="disabled")
         self.mss_url_switch.pack(anchor="w")
         self.pre_var_url.trace_add("write", self._update_mss_state_url)
-        self.url_button_action = tk.Button(self.page_url, text="🔍 Consultar URL", command=self.run_url_check, bg="#007acc", fg="white", font=button_font, relief=tk.FLAT)
+        self.url_button_action = tk.Button(self.page_url, text="🔍 Consultar Domínio", command=self.run_url_check, bg="#007acc", fg="white", font=button_font, relief=tk.FLAT)
         self.url_button_action.pack(pady=10)
         self.url_status_label = tk.Label(self.page_url, text="", bg="#1e1e1e", fg="#00ff99", font=label_font)
         self.url_status_label.pack()
@@ -372,124 +372,154 @@ class IPCheckerApp:
         self.hash_output_area.see("1.0")
 
     def run_url_check(self):
-        self.results_url.clear()
-        self.bad_urls = set()
-        from ip_checker_core import check_url_virustotal, check_url_ibm
-        self.url_output_area.delete("1.0", tk.END)
-        raw_urls = self.url_entry.get()
-        cleaned_urls = re.sub(r"[\s\n]+", ",", raw_urls)
-        url_list = [u.strip() for u in cleaned_urls.split(",") if u.strip()]
+            self.results_url.clear()
+            self.bad_urls = set()
+            from ip_checker_core import check_url_virustotal, check_url_ibm
+            self.url_output_area.delete("1.0", tk.END)
+            
+            raw_urls = self.url_entry.get()
+            cleaned_urls = re.sub(r"[\s\n]+", ",", raw_urls)
+            url_list = [u.strip() for u in cleaned_urls.split(",") if u.strip()]
 
-        if not url_list:
-            messagebox.showerror("Erro", "Nenhuma URL informada.")
-            return
-        self.stop_flag = False
-        self.currently_processing_urls.clear()
-        self.update_status_label_url()
+            if not url_list:
+                messagebox.showerror("Erro", "Nenhum domínio informado.")
+                return
+                
+            self.stop_flag = False
+            self.currently_processing_urls.clear()
+            self.update_status_label_url()
 
-        def thread_run():
-            for i, url in enumerate(url_list):
-                self.currently_processing_urls.add(url)
-                self.update_status_label_url()
-                if self.stop_flag:
-                    self.url_output_area.insert(tk.END, f"[CANCELADO] {url}\n")
+            def thread_run():
+                for i, raw_url in enumerate(url_list):
+                    temp_url_for_parse = raw_url
+                    if not re.match(r'^\w+://', temp_url_for_parse):
+                        temp_url_for_parse = 'http://' + temp_url_for_parse
+                    
+                    try:
+                        parsed_initial = urlparse(temp_url_for_parse)
+                        # Pega o netloc (ex: www.site.com) e remove porta se houver (split :)
+                        extracted_domain = (parsed_initial.netloc or parsed_initial.path).split(':')[0]
+                        if extracted_domain:
+                            url = extracted_domain
+                        else:
+                            url = raw_url
+                    except Exception:
+                        url = raw_url
+                    
+                    self.currently_processing_urls.add(url)
+                    self.update_status_label_url()
+                    
+                    if self.stop_flag:
+                        self.url_output_area.insert(tk.END, f"[CANCELADO] {url}\n")
+                        self.currently_processing_urls.discard(url)
+                        self.update_status_label_url()
+                        break
+
+                    result_vt = check_url_virustotal(url)
+                    if result_vt.get("not_found"):
+                        vt_score = "Sem registros"
+                    else:
+                        vt_score = result_vt.get("score", "-")
+
+                    ibm_score = "-"
+                    if self.ibm_var_url.get():
+                        driver = self.driver_pool.get()
+                        try:
+                            ibm_score = check_url_ibm(driver, url)
+                            if ibm_score.lower() == "unknown":
+                                ibm_score = "Desconhecido"
+                        finally:
+                            self.driver_pool.put(driver)
+
+                    alien_score, alien_link = check_url_alienvault(url)
+                    
+                    vt_id   = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
+                    vt_link = f"https://www.virustotal.com/gui/url/{vt_id}"
+                    # IBM muitas vezes prefere /host/ para dominios, mas /url/ costuma redirecionar bem
+                    ibm_link = f"https://exchange.xforce.ibmcloud.com/url/{url}" 
+                    
+                    output, bad = self.process_url(i + 1, url, vt_score, ibm_score, vt_link, ibm_link, alien_score, alien_link, total_urls=len(url_list))
+                    
+                    if bad:
+                        self.bad_urls.add(url)
+                    
+                    self.url_output_area.insert(tk.END, output + "\n\n")
+                    self.url_output_area.see(tk.END)
                     self.currently_processing_urls.discard(url)
                     self.update_status_label_url()
-                    break
-                result_vt = check_url_virustotal(url)
-                if result_vt.get("not_found"):
-                    vt_score = "Sem registros"
-                else:
-                    vt_score = result_vt.get("score", "-")
-                ibm_score = "-"
-                if self.ibm_var_url.get():
-                    driver = self.driver_pool.get()
-                    try:
-                        ibm_score = check_url_ibm(driver, url)
-                        if ibm_score.lower() == "unknown":
-                            ibm_score = "Desconhecido"
-                    finally:
-                        self.driver_pool.put(driver)
-                alien_score, alien_link = check_url_alienvault(url)
-                vt_id   = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
-                vt_link = f"https://www.virustotal.com/gui/url/{vt_id}"
-                ibm_link = f"https://exchange.xforce.ibmcloud.com/url/{url}"
-                output, bad = self.process_url(i + 1, url, vt_score, ibm_score, vt_link, ibm_link, alien_score, alien_link, total_urls=len(url_list))
-                if bad:
-                    self.bad_urls.add(url)
-                self.url_output_area.insert(tk.END, output + "\n\n")
-                self.url_output_area.see(tk.END)
-                self.currently_processing_urls.discard(url)
-                self.update_status_label_url()
-                self.results_url.append([
-                    url, vt_score, ibm_score, alien_score, vt_link, ibm_link, alien_link
-                ])
+                    
+                    self.results_url.append([
+                        url, vt_score, ibm_score, alien_score, vt_link, ibm_link, alien_link
+                    ])
 
-                # Obter domínio da URL
-                def resolve_domain_via_google_dns(domain):
-                    try:
-                        response = requests.get(f"https://dns.google/resolve?name={domain}&type=A", timeout=5)
-                        data = response.json()
-                        ips = []
-                        if 'Answer' in data:
-                            for answer in data['Answer']:
-                                ip = answer.get('data')
-                                if ip and is_public_ip(ip):
-                                    ips.append(ip)
-                        return ips
-                    except Exception:
-                        return []
-                def is_public_ip(ip):
-                    try:
-                        return ipaddress.ip_address(ip).is_global
-                    except ValueError:
-                        return False
-                def resolve_domain_to_ips(domain):
-                    try:
-                        name, alias, ips = socket.gethostbyname_ex(domain)
-                        return ips
-                    except Exception:
-                        return []
-                parsed = urlparse(url if re.match(r'^\w+://', url) else 'http://' + url)
-                domain = (parsed.netloc or parsed.path).split(':')[0]
-                resolved_ips = self._resolve_domain_via_google_dns(domain)
-                if not resolved_ips:
-                    resolved_ips = self._resolve_domain_with_socket(domain)
-                resolved_ips = sorted(set(resolved_ips))
-                if resolved_ips:
-                    self.url_output_area.insert(tk.END, f"[{domain}] IP(s) associados(s) para o domínio: {', '.join(resolved_ips)}\n\n")
-                else:
-                    self.url_output_area.insert(tk.END, f"[{domain}] Não foi possível resolver IP para o domínio.\n\n")
-                for j, ip in enumerate(resolved_ips, 1):
-                    ip_output, ip_bad = self.process_url_ip_associated(ip, domain)
-                    ip_output = ip_output.lstrip("\n")  # remove a quebra inicial
-                    self.url_output_area.insert(tk.END, ip_output + "\n\n")
-                    self.url_output_area.see(tk.END)
-                    if ip_bad:
-                        self.bad_urls.add(f"{ip} (associado à URL)")
-            self._append_analysis_url()
-            messagebox.showinfo("Concluído", "Consulta de URLs finalizada.")
-        Thread(target=thread_run, daemon=True).start()
+                    def resolve_domain_via_google_dns(domain):
+                        try:
+                            response = requests.get(f"https://dns.google/resolve?name={domain}&type=A", timeout=5)
+                            data = response.json()
+                            ips = []
+                            if 'Answer' in data:
+                                for answer in data['Answer']:
+                                    ip = answer.get('data')
+                                    if ip and is_public_ip(ip):
+                                        ips.append(ip)
+                            return ips
+                        except Exception:
+                            return []
+                    def is_public_ip(ip):
+                        try:
+                            return ipaddress.ip_address(ip).is_global
+                        except ValueError:
+                            return False
+                    def resolve_domain_to_ips(domain):
+                        try:
+                            name, alias, ips = socket.gethostbyname_ex(domain)
+                            return ips
+                        except Exception:
+                            return []
+                    domain = url 
+                    resolved_ips = self._resolve_domain_via_google_dns(domain)
+                    if not resolved_ips:
+                        resolved_ips = self._resolve_domain_with_socket(domain)
+                    
+                    resolved_ips = sorted(set(resolved_ips))
+                    
+                    if resolved_ips:
+                        self.url_output_area.insert(tk.END, f"[{domain}] IP(s) associados(s) para o domínio: {', '.join(resolved_ips)}\n\n")
+                    else:
+                        self.url_output_area.insert(tk.END, f"[{domain}] Não foi possível resolver IP para o domínio.\n\n")
+                    
+                    for j, ip in enumerate(resolved_ips, 1):
+                        ip_output, ip_bad = self.process_url_ip_associated(ip, domain)
+                        ip_output = ip_output.lstrip("\n")
+                        self.url_output_area.insert(tk.END, ip_output + "\n\n")
+                        self.url_output_area.see(tk.END)
+                        if ip_bad:
+                            self.bad_urls.add(f"{ip} (associado ao Domínio)")
+                
+                self._append_analysis_url()
+                messagebox.showinfo("Concluído", "Consulta de domínio finalizada.")
+            
+            Thread(target=thread_run, daemon=True).start()
 
     def _append_analysis_url(self):
         if not self.pre_var_url.get():
             return
         if self.bad_urls:
             if self.mss_var_url.get():
-                texto = ("URL(s) com má reputação detectada.\n"
-                         "Um chamado foi aberto com o MSS para verificar o tráfego para a(s) URL(s): ")
+                texto = ("Domínio(s) com má reputação detectada.\n"
+                         "Um chamado foi aberto com o MSS para efetuar o bloqueio para o(s) Domínio(s): ")
             else:
-                texto = ("URL(s) com má reputação detectada.\n"
-                         "Recomendamos o bloqueio ou inspeção do tráfego para essa(s) URL(s).")
+                texto = ("Domínio(s) com má reputação detectada.\n"
+                         "Recomendamos o bloqueio ou inspeção do tráfego.")
         else:
-            texto = ("Nenhum indício de reputação maliciosa foi encontrado para as URLs consultadas.")
+            texto = ("Nenhum indício de reputação maliciosa foi encontrado para os Domínios consultados.")
         self.url_output_area.insert("1.0", texto + "\n\n")
         self.url_output_area.see("1.0")
 
     def update_status_label_url(self):
         if self.currently_processing_urls:
             inline = " | ".join(sorted(self.currently_processing_urls))
-            status = f"Consultando URLs: {inline}"
+            status = f"Consultando Domínios: {inline}"
         else:
             status = ""
         self.url_status_label.config(text=status)
@@ -513,7 +543,7 @@ class IPCheckerApp:
                 pass
             try:
                 ibm_val = float(ibm_score)
-                if ibm_val >= 3:
+                if ibm_val >= 2:
                     is_malicious = True
             except (ValueError, TypeError):
                 if isinstance(ibm_score, str) and ibm_score.strip().lower() in ("alto", "médio", "moderado"):
