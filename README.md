@@ -1,10 +1,10 @@
-# 🦈 IP Shark v2.4.7
+# 🦈 IP Shark
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/alexsilva-sh/IP-Shark)](https://github.com/alexsilva-sh/IP-Shark/pulls)
 
-Ferramenta Python com interface gráfica (modo escuro) para análise de reputação de IPs, hashes e URLs, integrando múltiplas fontes de inteligência de ameaças.
+Ferramenta Python com interface gráfica (modo escuro) para análise de reputação de IPs, hashes e Domínios, integrando múltiplas fontes de inteligência de ameaças.
 O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, IPinfo e JoeSandbox, com execução paralela, exportação de resultados e geração de recomendações automáticas.
 ---
 
@@ -27,10 +27,10 @@ O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, 
 - **Exportação CSV** com todos os links.
 - **Pré-análise com recomendações automáticas**.
 
-### 🌐 Análise de URLs
+### 🌐 Análise de Domínios
 - **VirusTotal**: Score de reputação.
-- **IBM X-Force**: Score da URL (via Selenium).
-- **AlienVault**: Quantidade de pulsos relacionados à URL.
+- **IBM X-Force**: Score do Domínio (via Selenium).
+- **AlienVault**: Quantidade de pulsos relacionados ao Domínio.
 - **Exportação CSV** com links.
 - Resolução automática de IPs associados usando o DNS público do Google (https://dns.google/resolve) e socket.gethostbyname_ex().
 - Pré-análise automática com recomendações de bloqueio ou inspeção.
@@ -40,7 +40,7 @@ O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, 
 ## ⚙️ Recursos Adicionais
 - Interface moderna com modo escuro total.
 - Execução paralela com status dinâmico das consultas.
-- Abas dedicadas para IP, Hash e URL.
+- Abas dedicadas para IP, Hash e Domínio.
 - Gerenciamento automático do ChromeDriver, com fechamento completo dos processos ao encerrar o programa.
 - Atualização automática: verificação de nova versão no GitHub.
 - Entrada flexível — aceita vírgulas, espaços ou quebras de linha.
@@ -64,7 +64,7 @@ Você pode obter suas chaves nos links abaixo:
 
 **Execute o ipshark.exe:**
 1. Execute ipshark.exe (ou python ip_checker_gui_dark.py se estiver em ambiente Python).
-2. Escolha a aba IP, Hash ou URL.
+2. Escolha a aba IP, Hash ou Domínio.
 3. Cole os valores a serem consultados (separados por vírgula, espaço ou quebra de linha).
 4. Marque as opções desejadas (“IBM X-Force”, “Pré-análise”, “Cliente tem MSS?”).
 5. Clique em 🔍 Consultar para iniciar.
