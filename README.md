@@ -74,7 +74,7 @@ Obtenha suas chaves gratuitas nos links abaixo:
 
 ## 🚀 Como usar
 
-1. Execute `ipshark.exe` (ou `python ip_checker_gui_dark.py` em ambiente Python).
+1. Execute `ipshark.exe`.
 2. Selecione o idioma desejado: 🇧🇷 PT ou 🇺🇸 EN.
 3. Escolha a aba **IP**, **Hash** ou **Domínio**.
 4. Cole os valores a serem consultados (separados por vírgula, espaço ou quebra de linha).
