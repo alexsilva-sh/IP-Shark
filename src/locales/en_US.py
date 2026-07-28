@@ -186,6 +186,7 @@ STRINGS = {
 
     # Config
     "btn_config_api": "🗝 Configure API",
+    "close": "Close",
     "cfg_title": "Configure API keys",
     "cfg_intro": (
         "Keys are stored on this computer only, encrypted by Windows with your "

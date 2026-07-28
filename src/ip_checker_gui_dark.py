@@ -1293,25 +1293,86 @@ class IPCheckerApp:
 import webbrowser
 from tkinter import Toplevel, Label, Button
 
+def _limpar_markdown(texto):
+    """Converte as notas de release do GitHub em linhas legiveis fora do navegador.
+
+    Devolve uma lista de (linha, estilo), com estilo em {"titulo", "item", "texto"}.
+    """
+    linhas = []
+    dentro_de_codigo = False
+    for bruta in (texto or "").splitlines():
+        linha = bruta.rstrip()
+        if linha.strip().startswith("```"):
+            dentro_de_codigo = not dentro_de_codigo
+            continue
+        if dentro_de_codigo:
+            if linha.strip():
+                linhas.append((linha.strip(), "texto"))
+            continue
+
+        linha = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", linha)   # [texto](url) -> texto
+        linha = linha.replace("**", "").replace("`", "")
+        linha = re.sub(r"^\s*>\s?", "", linha)
+
+        cabecalho = re.match(r"^\s*#{1,6}\s*(.+)$", linha)
+        if cabecalho:
+            linhas.append((cabecalho.group(1).strip(), "titulo"))
+            continue
+
+        item = re.match(r"^\s*[-*+]\s+(.+)$", linha)
+        if item:
+            linhas.append((item.group(1).strip(), "item"))
+            continue
+
+        if linha.strip():
+            # Junta linhas seguidas num paragrafo so, deixando a quebra a cargo do widget.
+            if linhas and linhas[-1][1] == "texto" and linhas[-1][0]:
+                linhas[-1] = (f"{linhas[-1][0]} {linha.strip()}", "texto")
+            else:
+                linhas.append((linha.strip(), "texto"))
+        elif linhas and linhas[-1][0]:
+            linhas.append(("", "texto"))
+    while linhas and not linhas[-1][0]:
+        linhas.pop()
+    return linhas
+
+
 def show_update_window(latest_version, novidades_texto):
     update_win = Toplevel()
     update_win.title(t("update_available"))
     update_win.configure(bg="#1e1e1e")
-    update_win.geometry("500x300")
+    update_win.minsize(520, 360)
+
     Label(update_win, text=t("new_version_available").format(version=latest_version),
-          bg="#1e1e1e", fg="white", font=("Segoe UI", 10, "bold")).pack(pady=(10, 5))
-    Label(update_win, text=t("whats_new"), bg="#1e1e1e", fg="white", anchor="w",
-          font=("Segoe UI", 10, "underline")).pack(pady=(5, 0), anchor="w", padx=10)
-    novidades_lines = novidades_texto.strip().splitlines() if novidades_texto else [t("cannot_load_release_notes")]
-    for item in novidades_lines:
-        Label(update_win, text="• " + item.strip(), bg="#1e1e1e", fg="white", anchor="w",
-              font=("Segoe UI", 10)).pack(anchor="w", padx=20)
-    def open_github():
-        webbrowser.open("https://github.com/alexsilva-sh/IP-Shark/releases")
-    link_label = Label(update_win, text=t("download_github"),
-                       fg="#00aaff", bg="#1e1e1e", cursor="hand2", font=("Segoe UI", 10, "bold"))
-    link_label.pack(pady=20)
-    link_label.bind("<Button-1>", lambda e: open_github())
+          bg="#1e1e1e", fg="white", font=("Segoe UI", 11, "bold")).pack(pady=(14, 2), padx=16, anchor="w")
+    Label(update_win, text=t("whats_new"), bg="#1e1e1e", fg="#9aa0a6", anchor="w",
+          font=("Segoe UI", 9)).pack(pady=(0, 8), padx=16, anchor="w")
+
+    caixa = scrolledtext.ScrolledText(update_win, wrap=tk.WORD, bg="#141414", fg="#dddddd",
+                                      font=("Segoe UI", 10), relief=tk.FLAT, height=13,
+                                      width=62, padx=12, pady=10, borderwidth=0)
+    caixa.pack(fill=tk.BOTH, expand=True, padx=16)
+    caixa.tag_configure("titulo", foreground="#4da3ff", font=("Segoe UI", 10, "bold"),
+                        spacing1=10, spacing3=4)
+    caixa.tag_configure("item", lmargin1=14, lmargin2=28, spacing3=3)
+    caixa.tag_configure("texto", spacing3=3)
+
+    conteudo = _limpar_markdown(novidades_texto)
+    if not conteudo:
+        conteudo = [(t("cannot_load_release_notes"), "texto")]
+    for linha, estilo in conteudo:
+        prefixo = "• " if estilo == "item" else ""
+        caixa.insert(tk.END, f"{prefixo}{linha}\n", estilo)
+    caixa.config(state=tk.DISABLED)
+
+    rodape = tk.Frame(update_win, bg="#1e1e1e")
+    rodape.pack(fill="x", padx=16, pady=12)
+    ttk.Button(rodape, text=t("close"), style="Secondary.TButton",
+               command=update_win.destroy).pack(side="right")
+    ttk.Button(rodape, text=t("download_github"), style="Primary.TButton",
+               command=lambda: webbrowser.open(
+                   "https://github.com/alexsilva-sh/IP-Shark/releases")).pack(side="right", padx=(0, 8))
+    update_win.bind("<Escape>", lambda e: update_win.destroy())
 
 def update_language_buttons():
     if CURRENT_LANG == "pt":
