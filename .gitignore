@@ -1,0 +1,20 @@
+# Build do PyInstaller
+build/
+dist/
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Chaves de API — aposentadas do repositório.
+# Agora ficam cifradas com DPAPI em %LOCALAPPDATA%\IPShark\api_keys.dat
+config/api.env
+*.env
+
+# Ferramentas locais
+.claude/
+.vscode/
+
+# Documento interno de melhorias (descreve falhas ainda não corrigidas)
+MELHORIAS.md

@@ -45,24 +45,25 @@ O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, 
 - Abas dedicadas para **IP**, **Hash** e **Domínio**.
 - Gerenciamento automático do ChromeDriver com pool de drivers e fechamento completo dos processos ao encerrar.
 - Verificação automática de nova versão no GitHub ao iniciar.
-- Botão de atalho para abrir e editar o arquivo `api.env` diretamente pela interface.
-- Entrada flexível — aceita vírgulas, espaços ou quebras de linha.
-- Resultados coloridos: 🔴 vermelho para reputação ruim, 🟢 verde para limpo.
+- Tela própria para cadastrar as chaves de API, que ficam **criptografadas** na máquina do usuário.
+- Entrada flexível: aceita vírgulas, espaços ou quebras de linha.
+- Resultados coloridos: 🔴 vermelho para reputação ruim, 🟡 âmbar para casos que exigem validação, 🟢 verde para limpo.
 
 ---
 
 ## 🔐 Configuração de APIs
 
-Crie (ou edite) o arquivo `api.env` no diretório `config/` com o seguinte conteúdo:
+Abra o IP Shark e clique em **🗝 Configurar API**. Preencha as chaves dos serviços que você
+quiser usar e clique em **Salvar**.
 
-```
-ABUSEIPDB_API_KEY=xxxxx
-VIRUSTOTAL_API_KEY=xxxxx
-IPINFO_API_KEY=xxxxx
-ALIENVAULT_API_KEY=xxxxx
-```
+As chaves ficam gravadas só na sua máquina, em `%LOCALAPPDATA%\IPShark\api_keys.dat`,
+criptografadas pela DPAPI do Windows com as credenciais da sua conta. Na prática, isso
+significa que apenas o seu usuário, naquele computador, consegue lê-las. As chaves não são
+enviadas para nenhum lugar além das próprias APIs consultadas.
 
-> Você também pode clicar no botão **⚙️ Configurar APIs** diretamente na interface para abrir o arquivo.
+Se você vem de uma versão anterior à v3.1 e usava o `config/api.env`, suas chaves são
+importadas automaticamente na primeira execução. A tela de configuração também oferece apagar
+o arquivo antigo, que guardava tudo em texto puro e não é mais lido pelo programa.
 
 Obtenha suas chaves gratuitas nos links abaixo:
 - [VirusTotal](https://www.virustotal.com/gui/home/upload)

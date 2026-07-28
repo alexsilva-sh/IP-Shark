@@ -1,0 +1,13 @@
+# Dependencias do IP Shark. Instale com: pip install -r requirements.txt
+# Versoes fixadas nas que geraram a release v3.1. Se atualizar alguma,
+# regere o .exe e teste as tres abas antes de publicar.
+
+requests==2.32.3
+selenium==4.30.0
+webdriver-manager==4.0.2
+beautifulsoup4==4.13.3
+openpyxl==3.1.5
+pyperclip==1.9.0
+
+# Usado apenas para gerar o executavel: pyinstaller ipshark.spec
+pyinstaller==6.12.0
