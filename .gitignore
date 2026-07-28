@@ -6,6 +6,7 @@ dist/
 # Python
 __pycache__/
 *.py[cod]
+.venv/
 
 # Chaves de API — aposentadas do repositório.
 # Agora ficam cifradas com DPAPI em %LOCALAPPDATA%\IPShark\api_keys.dat

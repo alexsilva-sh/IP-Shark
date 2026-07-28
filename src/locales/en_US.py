@@ -157,11 +157,13 @@ STRINGS = {
     ),
 
     # Folders / files
+    "select_folder": "Select the folder to save the spreadsheet",
     "select_folder_hash": "Select folder to save hash results",
     "select_folder_url": "Select folder to save URL results",
 
     # Associated IP error
     "error_checking_associated_ip": "Error checking associated IP",
+    "error_processing_ip": "Error processing IP",
 
     # Update
     "update_available": "Update available",
@@ -241,7 +243,58 @@ STRINGS = {
     "csv_ibm_link": "IBM link",
     "csv_alien_link": "AlienVault link",
     "csv_joe_link": "JoeSandbox link",
-    "toggle_check_ips": "Check associated IPs",
+    # Results table
+    "col_verdict": "Verdict",
+    "col_abuse": "AbuseIPDB",
+    "col_vt": "VirusTotal",
+    "col_ibm": "X-Force",
+    "col_alien": "AlienVault",
+    "col_country": "Country",
+    "col_file": "File",
+    "verdict_clean": "● Clean",
+    "verdict_whitelisted": "● Clean (whitelisted)",
+    "verdict_review": "▲ Review",
+    "verdict_bad": "✖ Malicious",
+    "verdict_unknown": "○ Unavailable",
+    "verdict_incomplete": "▲ Incomplete analysis",
+
+    # X-Force browser pool
+    "drivers_degraded": (
+        "Only {vivos} of {total} IBM X-Force browsers started. "
+        "X-Force lookups will still work, but more slowly."
+    ),
+    "drivers_none": (
+        "No IBM X-Force browser could be started - those lookups will be flagged as "
+        "unavailable. Check that Google Chrome is installed and that the ChromeDriver "
+        "download is not blocked on your network."
+    ),
+
+    # Per-source state
+    "source_unavailable": "lookup failed",
+    "source_no_key": "API key not configured",
+    "source_quota": "API quota exhausted",
+    "source_no_data": "no records",
+    "sources_incomplete": "Incomplete analysis - no response from: {fontes}",
+    "quota_warning": (
+        "WARNING: an API quota ran out during the scan ({fontes}). "
+        "Items flagged as incomplete were NOT checked against those sources - "
+        "run the query again once the quota resets."
+    ),
+    "incomplete_review": (
+        "The following items could not be checked against every source: {lista}\n"
+        "The absence of a detection here does not mean the indicator is clean. "
+        "Re-run the query before clearing it."
+    ),
+    "detail_hint": "Select a row to see details and links.",
+    "count_valid": "valid",
+    "count_invalid": "invalid",
+    "count_private": "private",
+    "count_items": "items",
+    "skipped_items": "Skipped",
+    "progress_done": "{feitos}/{total}",
+    "associated_to_domain": "associated with domain",
+
+    "toggle_check_ips":"Check associated IPs",
     "csv_sheet_domains": "Domains",
     "csv_sheet_ips_prefix": "IPs - ",
     

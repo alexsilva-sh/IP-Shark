@@ -19,7 +19,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
-from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
 from selenium.webdriver.chrome.service import Service as ChromeService
 from country_codes import COUNTRY_NAMES_LOCAL
@@ -79,6 +78,52 @@ def salvar_chaves(chaves):
 
 reload_api_keys()
 
+TIMEOUT_HTTP = 15
+
+# Estado de cada fonte consultada. Indisponibilidade nunca pode virar score zero:
+# sem isso, rede caida e cota estourada aparecem como "IP limpo".
+FONTE_OK = "ok"                      # respondeu com dado utilizavel
+FONTE_SEM_DADOS = "sem_dados"        # respondeu, mas nao conhece o indicador
+FONTE_SEM_CHAVE = "sem_chave"        # chave ausente ou recusada
+FONTE_COTA = "cota"                  # HTTP 429
+FONTE_INDISPONIVEL = "indisponivel"  # rede, timeout, 5xx, resposta ilegivel
+
+ESTADOS_SEM_RESPOSTA = (FONTE_SEM_CHAVE, FONTE_COTA, FONTE_INDISPONIVEL)
+
+
+def _consultar(url, **kwargs):
+    """GET com timeout que classifica a resposta. Devolve (json, estado)."""
+    kwargs.setdefault("timeout", TIMEOUT_HTTP)
+    try:
+        resposta = requests.get(url, **kwargs)
+    except requests.exceptions.RequestException:
+        return None, FONTE_INDISPONIVEL
+    if resposta.status_code == 429:
+        return None, FONTE_COTA
+    if resposta.status_code == 404:
+        return None, FONTE_SEM_DADOS
+    if resposta.status_code in (401, 403):
+        return None, FONTE_SEM_CHAVE
+    if resposta.status_code != 200:
+        return None, FONTE_INDISPONIVEL
+    try:
+        return resposta.json(), FONTE_OK
+    except ValueError:
+        return None, FONTE_INDISPONIVEL
+
+
+def classificar_ibm(valor):
+    """Traduz o retorno do scraping do X-Force para um estado de fonte."""
+    if valor is None:
+        return None      # fonte nao consultada
+    bruto = str(valor).strip().lower()
+    if bruto == "error":
+        return FONTE_INDISPONIVEL
+    if bruto == "unknown":
+        return FONTE_SEM_DADOS
+    return FONTE_OK
+
+
 def safe_get(d, *keys, default=None):
     for key in keys:
         if isinstance(d, dict) and key in d:
@@ -96,30 +141,22 @@ def is_valid_ip(ip):
 
 def check_ip_abuseipdb(ip):
     reload_api_keys()
-    url = 'https://api.abuseipdb.com/api/v2/check'
-    headers = {'Accept': 'application/json', 'Key': ABUSEIPDB_API_KEY}
-    params = {'ipAddress': ip, 'maxAgeInDays': 90}
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException:
-        return None
+    if not ABUSEIPDB_API_KEY:
+        return None, FONTE_SEM_CHAVE
+    return _consultar('https://api.abuseipdb.com/api/v2/check',
+                      headers={'Accept': 'application/json', 'Key': ABUSEIPDB_API_KEY},
+                      params={'ipAddress': ip, 'maxAgeInDays': 90})
 
 def check_ip_virustotal(ip):
     reload_api_keys()
-    url = f'https://www.virustotal.com/api/v3/ip_addresses/{ip}'
-    headers = {'x-apikey': VIRUSTOTAL_API_KEY}
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException:
-        return None
+    if not VIRUSTOTAL_API_KEY:
+        return None, FONTE_SEM_CHAVE
+    return _consultar(f'https://www.virustotal.com/api/v3/ip_addresses/{ip}',
+                      headers={'x-apikey': VIRUSTOTAL_API_KEY})
 
 def check_ip_ibm(driver, ip):
     url = f"https://exchange.xforce.ibmcloud.com/ip/{ip}"
-    driver.execute_script(f"window.open('{url}', '_blank');")
+    driver.execute_script("window.open(arguments[0], '_blank');", url)
     driver.switch_to.window(driver.window_handles[-1])
     try:
         import time
@@ -153,7 +190,7 @@ def check_ip_ibm(driver, ip):
 
 def check_hash_ibm(driver, hash_str):
     url = f"https://exchange.xforce.ibmcloud.com/malware/{hash_str}"
-    driver.execute_script(f"window.open('{url}', '_blank');")
+    driver.execute_script("window.open(arguments[0], '_blank');", url)
     driver.switch_to.window(driver.window_handles[-1])
 
     try:
@@ -179,7 +216,7 @@ def check_hash_ibm(driver, hash_str):
 def check_hash_joesandbox(driver, hash_str):
     base_url = "https://www.joesandbox.com/analysis/search?q="
     search_url = base_url + hash_str
-    driver.execute_script(f"window.open('{search_url}', '_blank');")
+    driver.execute_script("window.open(arguments[0], '_blank');", search_url)
     driver.switch_to.window(driver.window_handles[-1])
     found = False
     try:
@@ -194,58 +231,30 @@ def check_hash_joesandbox(driver, hash_str):
 
 def check_hash_virustotal(hash_str):
     reload_api_keys()
-    url = f"https://www.virustotal.com/api/v3/files/{hash_str}"
-    headers = {'x-apikey': VIRUSTOTAL_API_KEY}
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException:
-        return None
+    if not VIRUSTOTAL_API_KEY:
+        return None, FONTE_SEM_CHAVE
+    return _consultar(f"https://www.virustotal.com/api/v3/files/{hash_str}",
+                      headers={'x-apikey': VIRUSTOTAL_API_KEY})
+
+def _alienvault(tipo, indicador, link):
+    """Consulta o OTX. Devolve (contagem_de_pulsos, link, estado)."""
+    reload_api_keys()
+    if not ALIENVAULT_API_KEY:
+        return None, link, FONTE_SEM_CHAVE
+    dados, estado = _consultar(
+        f"https://otx.alienvault.com/api/v1/indicators/{tipo}/{indicador}/general",
+        headers={"X-OTX-API-KEY": ALIENVAULT_API_KEY, "Accept": "application/json"})
+    if estado == FONTE_SEM_DADOS:
+        return "0", link, FONTE_OK   # indicador ausente do OTX significa zero pulsos
+    if estado != FONTE_OK:
+        return None, link, estado
+    return str(safe_get(dados, "pulse_info", "count", default=0)), link, FONTE_OK
 
 def check_hash_alienvault(hash_str):
-    reload_api_keys()
-    try:
-        api_key = ALIENVAULT_API_KEY
-        link = f"https://otx.alienvault.com/indicator/file/{hash_str}"
-
-        if not api_key:
-            return "error_api_not_found", link
-        headers = {
-            "X-OTX-API-KEY": api_key,
-            "Accept": "application/json"}
-
-        url = f"https://otx.alienvault.com/api/v1/indicators/file/{hash_str}/general"
-        response = requests.get(url, headers=headers, timeout=15)
-
-        if response.status_code != 200:
-            return "0", link
-
-        data = response.json()
-        pulse_count = data.get("pulse_info", {}).get("count", 0)
-        return str(pulse_count), link
-    except Exception as e:
-        return "0", f"https://otx.alienvault.com/indicator/file/{hash_str}"
+    return _alienvault("file", hash_str, f"https://otx.alienvault.com/indicator/file/{hash_str}")
 
 def check_url_alienvault(url):
-    reload_api_keys()
-    try:
-        api_key = ALIENVAULT_API_KEY
-        link = f"https://otx.alienvault.com/indicator/url/{url}"
-        if not api_key:
-            return "error_api_not_found", link
-        headers = {
-            "X-OTX-API-KEY": api_key,
-            "Accept": "application/json"}
-        url = f"https://otx.alienvault.com/api/v1/indicators/url/{url}/general"
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code != 200:
-            return "0", link
-        data = response.json()
-        pulse_count = data.get("pulse_info", {}).get("count", 0)
-        return str(pulse_count), link
-    except Exception as e:
-        return "0", f"https://otx.alienvault.com/indicator/url/{url}"
+    return _alienvault("url", url, f"https://otx.alienvault.com/indicator/url/{url}")
 
 def check_url_ibm(driver, url):
     ibm_url = f"https://exchange.xforce.ibmcloud.com/url/{url}"
@@ -266,23 +275,19 @@ def check_url_ibm(driver, url):
 
 def check_url_virustotal(url):
     reload_api_keys()
-    api_key = VIRUSTOTAL_API_KEY
-    if not api_key:
-        return {"score": "error_api_key_missing", "not_found": False}
+    if not VIRUSTOTAL_API_KEY:
+        return {"score": None, "not_found": False}, FONTE_SEM_CHAVE
     vt_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
-    api_url = f"https://www.virustotal.com/api/v3/urls/{vt_id}"
-    headers = {"x-apikey": api_key, "Accept": "application/json"}
-    try:
-        resp = requests.get(api_url, headers=headers, timeout=15)
-        if resp.status_code == 404:
-            return {"score": "not_found", "not_found": True}
-        resp.raise_for_status()
-        data = resp.json()
-        score = safe_get(data, "data", "attributes",
-                         "last_analysis_stats", "malicious", default=0)
-        return {"score": score, "not_found": False}
-    except requests.exceptions.RequestException as e:
-        return {"score": "error_request", "not_found": False}
+    dados, estado = _consultar(f"https://www.virustotal.com/api/v3/urls/{vt_id}",
+                               headers={"x-apikey": VIRUSTOTAL_API_KEY,
+                                        "Accept": "application/json"})
+    if estado == FONTE_SEM_DADOS:
+        return {"score": None, "not_found": True}, FONTE_SEM_DADOS
+    if estado != FONTE_OK:
+        return {"score": None, "not_found": False}, estado
+    score = safe_get(dados, "data", "attributes",
+                     "last_analysis_stats", "malicious", default=0)
+    return {"score": score, "not_found": False}, FONTE_OK
 def start_browser():
     options = Options()
     options.add_argument("--headless=new")
@@ -297,18 +302,10 @@ def start_browser():
 
 def get_location(ip):
     reload_api_keys()
-    url = f"https://ipinfo.io/{ip}/json?token={IPINFO_API_KEY}"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-
-        city = data.get('city', 'N/A')
-        country_code = data.get('country', 'N/A')
-        country = translate_country_name(country_code)
-        return city, country
-    except requests.exceptions.RequestException:
+    dados, estado = _consultar(f"https://ipinfo.io/{ip}/json?token={IPINFO_API_KEY}")
+    if estado != FONTE_OK:
         return 'N/A', 'N/A'
+    return dados.get('city', 'N/A'), translate_country_name(dados.get('country', 'N/A'))
 
 def get_domain_from_abuseipdb(abuseipdb_result):
     try:
@@ -381,14 +378,24 @@ def _format_worksheet(ws):
     ws.auto_filter.ref = ws.dimensions
     ws.freeze_panes = "A2"
 
-def escolher_diretorio():
-    root = tk.Tk()
-    root.withdraw()
-    diretorio = filedialog.askdirectory(title="Escolha onde salvar o arquivo CSV")
+def escolher_diretorio(parent=None, titulo="Selecione a pasta para salvar"):
+    """Reaproveita a janela existente. Criar um segundo tk.Tk() dentro de um app Tk
+    ja em execucao gera comportamento erratico nos dialogos e vaza a raiz nova."""
+    dono = parent or tk._default_root
+    temporaria = None
+    if dono is None:
+        temporaria = tk.Tk()
+        temporaria.withdraw()
+        dono = temporaria
+    try:
+        diretorio = filedialog.askdirectory(title=titulo, parent=dono)
+    finally:
+        if temporaria is not None:
+            temporaria.destroy()
     return diretorio if diretorio else os.getcwd()
 
-def save_to_csv(results, headers, filename="results.xlsx"):
-    diretorio = escolher_diretorio()
+def save_to_csv(results, headers, filename="results.xlsx", parent=None, titulo=None):
+    diretorio = escolher_diretorio(parent, titulo or "Selecione a pasta para salvar")
     if filename.endswith(".csv"):
         filename = filename.replace(".csv", ".xlsx")
     filepath = os.path.join(diretorio, filename)
@@ -401,8 +408,9 @@ def save_to_csv(results, headers, filename="results.xlsx"):
     _format_worksheet(ws)
     wb.save(filepath)
 
-def save_to_excel(domain_results, domain_headers, ip_results_by_domain, ip_headers, filename="domain_results.xlsx"):
-    diretorio = escolher_diretorio()
+def save_to_excel(domain_results, domain_headers, ip_results_by_domain, ip_headers,
+                  filename="domain_results.xlsx", parent=None, titulo=None):
+    diretorio = escolher_diretorio(parent, titulo or "Selecione a pasta para salvar")
     filepath = os.path.join(diretorio, filename)
     wb = Workbook()
     ws_domains = wb.active
@@ -455,18 +463,29 @@ def format_output(ip, abuseipdb_result, virustotal_result, ibm_score, city, coun
         return [f"Erro ao formatar a saída para {ip}: {e}", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"]
         
 def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
-                    city, country, domain):
-    abuse_confidence = safe_get(abuseipdb_result, 'data', 'abuseConfidenceScore', default=0)
-    vt_score = safe_get(virustotal_result, 'data', 'attributes',
-                        'last_analysis_stats', 'malicious', default=0)
-    whitelisted = is_whitelisted_abuseipdb(abuseipdb_result)
+                    city, country, domain,
+                    estado_abuse=FONTE_OK, estado_vt=FONTE_OK, estado_ibm=FONTE_OK):
+    # Score None = fonte nao respondeu. Nunca 0, que se confunde com "sem denuncias".
+    abuse_confidence = (safe_get(abuseipdb_result, 'data', 'abuseConfidenceScore', default=0)
+                        if estado_abuse == FONTE_OK else None)
+    vt_score = (safe_get(virustotal_result, 'data', 'attributes',
+                         'last_analysis_stats', 'malicious', default=0)
+                if estado_vt == FONTE_OK else None)
+    whitelisted = is_whitelisted_abuseipdb(abuseipdb_result) if estado_abuse == FONTE_OK else False
 
-    try:
-        ibm_numeric = float(ibm_score)
-    except (ValueError, TypeError):
-        ibm_numeric = 0
+    ibm_numeric = 0
+    if estado_ibm == FONTE_OK:
+        try:
+            ibm_numeric = float(ibm_score)
+        except (ValueError, TypeError):
+            ibm_numeric = 0
 
-    has_bad_reputation = abuse_confidence > 0 or vt_score > 0 or ibm_numeric > 1
+    has_bad_reputation = (abuse_confidence or 0) > 0 or (vt_score or 0) > 0 or ibm_numeric > 1
+
+    fontes_indisponiveis = [nome for nome, estado in (
+        ("AbuseIPDB", estado_abuse), ("VirusTotal", estado_vt), ("IBM X-Force", estado_ibm)
+    ) if estado in ESTADOS_SEM_RESPOSTA]
+    cota_estourada = FONTE_COTA in (estado_abuse, estado_vt, estado_ibm)
 
     last_reported_at = safe_get(abuseipdb_result, 'data', 'lastReportedAt')
     if last_reported_at:
@@ -481,11 +500,17 @@ def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
         "vt_score": vt_score,
         "ibm_score": ibm_score,
         "whitelisted": whitelisted,
+        "fontes_indisponiveis": fontes_indisponiveis,
+        "cota_estourada": cota_estourada,
+        "estados": {"abuse": estado_abuse, "vt": estado_vt, "ibm": estado_ibm},
         "status": (
+            # Deteccao de uma fonte que respondeu ja e conclusao valida, mesmo com
+            # outra fora do ar. "Limpo", nao: exige que todas tenham respondido.
             # Whitelist no AbuseIPDB nao anula deteccao das demais bases.
             "whitelisted_bad" if whitelisted and has_bad_reputation else
-            "whitelisted" if whitelisted else
             "bad" if has_bad_reputation else
+            "incompleto" if fontes_indisponiveis else
+            "whitelisted" if whitelisted else
             "clean"
         ),
         "domain": domain,

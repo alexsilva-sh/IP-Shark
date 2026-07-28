@@ -92,6 +92,24 @@ Obtenha suas chaves gratuitas nos links abaixo:
 
 ---
 
+## 🛠 Desenvolvimento
+
+Ambos os scripts criam e reutilizam uma venv em `.venv/` automaticamente — não é preciso
+preparar nada antes.
+
+```bat
+build.bat            :: gera dist\ipshark.exe (venv + dependências + PyInstaller)
+build.bat fast run   :: reaproveita o cache e abre o executável ao final
+run_tests.bat        :: roda as suítes de tests\
+```
+
+`build.bat help` lista as demais opções (`publish`, `clean`).
+
+Os testes não usam rede, Selenium nem Chrome: as respostas de API são simuladas e o pool de
+navegadores roda com dublês. Rode-os antes de gerar um executável para distribuir.
+
+---
+
 **Demonstração**
 
 ![Demonstração de uso](assets/imagem.png)

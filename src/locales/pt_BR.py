@@ -160,11 +160,13 @@ STRINGS = {
     ),
 
     # Pastas / arquivos
+    "select_folder": "Selecione a pasta para salvar a planilha",
     "select_folder_hash": "Selecione a pasta para salvar os resultados de hash",
     "select_folder_url": "Selecione a pasta para salvar os resultados de URL",
 
     # Erros IP associados
     "error_checking_associated_ip": "Erro ao consultar IP associado",
+    "error_processing_ip": "Erro ao processar IP",
 
     # Atualização
     "update_available": "Atualização disponível",
@@ -245,6 +247,57 @@ STRINGS = {
     "csv_alien_link": "Link AlienVault",
     "csv_joe_link": "Link JoeSandbox",
     
+    # Tabela de resultados
+    "col_verdict": "Veredito",
+    "col_abuse": "AbuseIPDB",
+    "col_vt": "VirusTotal",
+    "col_ibm": "X-Force",
+    "col_alien": "AlienVault",
+    "col_country": "País",
+    "col_file": "Arquivo",
+    "verdict_clean": "● Limpo",
+    "verdict_whitelisted": "● Limpo (whitelist)",
+    "verdict_review": "▲ Revisar",
+    "verdict_bad": "✖ Malicioso",
+    "verdict_unknown": "○ Indisponível",
+    "verdict_incomplete": "▲ Análise incompleta",
+
+    # Pool de navegadores do X-Force
+    "drivers_degraded": (
+        "Apenas {vivos} de {total} navegadores do IBM X-Force iniciaram. "
+        "As consultas ao X-Force vão funcionar, mas mais devagar."
+    ),
+    "drivers_none": (
+        "Nenhum navegador do IBM X-Force pôde ser iniciado — essas consultas serão "
+        "marcadas como indisponíveis. Verifique se o Google Chrome está instalado e se "
+        "o download do ChromeDriver não está bloqueado na rede."
+    ),
+
+    # Estados por fonte
+    "source_unavailable": "falha na consulta",
+    "source_no_key": "chave não configurada",
+    "source_quota": "cota da API esgotada",
+    "source_no_data": "sem registros",
+    "sources_incomplete": "Análise incompleta — não responderam: {fontes}",
+    "quota_warning": (
+        "ATENÇÃO: a cota de alguma API se esgotou durante a varredura ({fontes}). "
+        "Os itens marcados como incompletos NÃO foram verificados nessas bases — "
+        "repita a consulta depois que a cota renovar."
+    ),
+    "incomplete_review": (
+        "Os itens a seguir não puderam ser verificados em todas as bases: {lista}\n"
+        "A ausência de detecção aqui não significa que o indicador é limpo. "
+        "Repita a consulta antes de liberar."
+    ),
+    "detail_hint": "Selecione uma linha para ver os detalhes e os links.",
+    "count_valid": "válidos",
+    "count_invalid": "inválidos",
+    "count_private": "privados",
+    "count_items": "itens",
+    "skipped_items": "Ignorados",
+    "progress_done": "{feitos}/{total}",
+    "associated_to_domain": "associado ao domínio",
+
     "toggle_check_ips": "Consultar IPs associados",
     "csv_sheet_domains": "Domínios",
     "csv_sheet_ips_prefix": "IPs - ",

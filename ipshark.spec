@@ -7,7 +7,7 @@ a = Analysis(
     binaries=[],
     # Nao inclua config/api.env aqui: isso embute as chaves dentro do .exe distribuido.
     datas=[('assets/shark.ico', 'assets'), ('src/locales/pt_BR.py', 'locales'), ('src/locales/en_US.py', 'locales'), ('src/country_codes.py', '.'), ('src/ip_checker_core.py', '.'), ('src/secure_store.py', '.')],
-    hiddenimports=['openpyxl', 'pyperclip', 'bs4', 'selenium', 'webdriver_manager', 'tqdm'],
+    hiddenimports=['openpyxl', 'pyperclip', 'bs4', 'selenium', 'webdriver_manager'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -2,13 +2,17 @@ import tkinter as tk
 from tkinter import scrolledtext, messagebox, filedialog
 from tkinter import ttk
 import pyperclip
+import threading
+import time
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
-from queue import Queue
+from contextlib import contextmanager
+from queue import Queue, Empty
 from ip_checker_core import check_hash_ibm
 from ip_checker_core import check_hash_alienvault
 from ip_checker_core import check_hash_joesandbox
 from ip_checker_core import check_url_alienvault
+from ip_checker_core import check_url_virustotal, check_url_ibm
 from concurrent.futures import as_completed
 import ipaddress
 import base64
@@ -21,6 +25,7 @@ import os
 import sys
 import webbrowser
 import secure_store
+import ip_checker_core as core
 
 __version__ = "v3.1"
 
@@ -61,17 +66,22 @@ def format_ip_output_gui(data, index=None, total=1):
         "clean": t("reputation_clean"),
         "bad": t("reputation_bad"),
         "whitelisted": f"{t('reputation_clean')} ({t('whitelisted')})",
-        "whitelisted_bad": t("reputation_whitelisted_bad")
+        "whitelisted_bad": t("reputation_whitelisted_bad"),
+        "incompleto": t("verdict_incomplete"),
     }
     if total == 1:
         header = f"[{data['ip']}] - {status_map[data['status']]}"
     else:
         header = f"[{index}] {data['ip']} - {status_map[data['status']]}"
+    estados = data.get("estados", {})
     lines = [header]
-    lines.append(f"{t('abuseipdb_score')}: {data['abuse_score']}%")
-    lines.append(f"{t('vt_score')}: {data['vt_score']}")
-    if data["ibm_score"]:
-        lines.append(f"{t('ibm_score')}: {data['ibm_score']}")
+    if data.get("fontes_indisponiveis"):
+        lines.append(t("sources_incomplete").format(fontes=", ".join(data["fontes_indisponiveis"])))
+    lines.append(f"{t('abuseipdb_score')}: "
+                 f"{texto_fonte(data['abuse_score'], estados.get('abuse'), '%')}")
+    lines.append(f"{t('vt_score')}: {texto_fonte(data['vt_score'], estados.get('vt'))}")
+    if data["ibm_score"] or estados.get("ibm") in core.ESTADOS_SEM_RESPOSTA:
+        lines.append(f"{t('ibm_score')}: {texto_fonte(data['ibm_score'], estados.get('ibm'))}")
     lines.append(f"{t('domain_label')}: {data['domain']}")
     lines.append(f"{t('country_city_label')}: {data['country']}, {data['city']}")
     if data["last_report"]:
@@ -83,6 +93,30 @@ def format_ip_output_gui(data, index=None, total=1):
     if data['links'].get("ibm"):
         lines.append(f"- {data['links']['ibm']}")
     return "\n".join(lines)
+
+def linha_csv_ip(data, com_ibm):
+    estados = data.get("estados", {})
+    linha = [data["ip"],
+             texto_fonte(data["abuse_score"], estados.get("abuse"), "%"),
+             texto_fonte(data["vt_score"], estados.get("vt"))]
+    if com_ibm:
+        linha.append(texto_fonte(data["ibm_score"] or "", estados.get("ibm")))
+    linha += [data["domain"], data["country"], data["city"],
+              data["last_report"] or t("no_reports"),
+              data["links"]["abuse"], data["links"]["vt"]]
+    if com_ibm:
+        linha.append(data["links"]["ibm"] or "")
+    return linha
+
+
+def colunas_ip(data, ultima):
+    estados = data.get("estados", {})
+    return (data["ip"], t(VERDICT_KEYS[data["status"]]),
+            coluna_fonte(data["abuse_score"], estados.get("abuse"), "%"),
+            coluna_fonte(data["vt_score"], estados.get("vt")),
+            coluna_fonte(data["ibm_score"] or "-", estados.get("ibm")),
+            ultima)
+
 
 def set_language(lang):
     global CURRENT_LANG, app
@@ -326,23 +360,350 @@ class ToggleSwitch(tk.Frame):
         self.state=s; self._disable() if s=="disabled" else self._update()
     def set_text(self,t):
         self.label.config(text=t)
-        
+
+
+VERDICT_KEYS = {
+    "clean": "verdict_clean",
+    "whitelisted": "verdict_whitelisted",
+    "whitelisted_bad": "verdict_review",
+    "bad": "verdict_bad",
+    "incompleto": "verdict_incomplete",
+    "unknown": "verdict_unknown",
+}
+
+VERDICT_TAGS = {
+    "clean": "clean",
+    "whitelisted": "clean",
+    "whitelisted_bad": "review",
+    "bad": "bad",
+    "incompleto": "review",
+    "unknown": "unknown",
+}
+
+ESTADO_TEXTO = {
+    core.FONTE_SEM_CHAVE: "source_no_key",
+    core.FONTE_COTA: "source_quota",
+    core.FONTE_INDISPONIVEL: "source_unavailable",
+    core.FONTE_SEM_DADOS: "source_no_data",
+}
+
+
+def texto_fonte(valor, estado, sufixo=""):
+    """Score da fonte quando ela respondeu; o motivo da ausencia quando nao."""
+    if estado in ESTADO_TEXTO:
+        return t(ESTADO_TEXTO[estado])
+    return f"{valor}{sufixo}"
+
+
+def coluna_fonte(valor, estado, sufixo=""):
+    """Versao curta para a celula da tabela; o motivo completo fica no detalhe."""
+    if estado in core.ESTADOS_SEM_RESPOSTA:
+        return "!"
+    if estado == core.FONTE_SEM_DADOS:
+        return "-"
+    return f"{valor}{sufixo}"
+
+
+def dividir_entrada(bruto):
+    return [p for p in re.split(r"[\s,;]+", bruto or "") if p]
+
+
+class MultilineInput(tk.Frame):
+    """Campo de varias linhas com contador ao vivo do conteudo colado."""
+
+    def __init__(self, master, contador, altura=4):
+        super().__init__(master, bg=master["bg"])
+        self._contador = contador
+        self.texto = tk.Text(self, height=altura, bg="#2a2a2a", fg="white", insertbackground="white",
+                             font=("Consolas", 10), relief=tk.FLAT, wrap=tk.WORD, padx=8, pady=6,
+                             undo=True)
+        self.texto.pack(fill="x")
+        self.resumo = tk.Label(self, bg=master["bg"], fg="#9aa0a6", font=("Segoe UI", 9), anchor="w")
+        self.resumo.pack(fill="x", pady=(4, 0))
+        self.texto.bind("<KeyRelease>", self.refresh)
+        self.texto.bind("<<Paste>>", lambda e: self.after(20, self.refresh))
+        self.refresh()
+
+    def get_text(self):
+        return self.texto.get("1.0", tk.END)
+
+    def focus_set(self):
+        self.texto.focus_set()
+
+    def refresh(self, _=None):
+        self.resumo.config(text=self._contador(self.get_text()))
+
+
+class ResultTable(tk.Frame):
+    """Tabela ordenavel de resultados com painel de detalhe da linha selecionada."""
+
+    def __init__(self, master, colunas, altura_detalhe=9):
+        super().__init__(master, bg=master["bg"])
+        self.colunas = colunas
+        self._textos = {}
+        self._ordem = []
+        self._preambulo = ""
+        self._ordenacao = (None, False)
+
+        painel = tk.PanedWindow(self, orient="vertical", bg="#1e1e1e", sashwidth=6,
+                                sashrelief="flat", bd=0, sashpad=0)
+        painel.pack(fill="both", expand=True)
+
+        quadro_tabela = tk.Frame(painel, bg="#1e1e1e")
+        ids = [c[0] for c in colunas]
+        self.tree = ttk.Treeview(quadro_tabela, columns=ids[1:], show="tree headings",
+                                 style="Result.Treeview", selectmode="browse")
+        barra = ttk.Scrollbar(quadro_tabela, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=barra.set)
+        barra.pack(side="right", fill="y")
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        self.tree.column("#0", width=colunas[0][2], minwidth=140, anchor="w", stretch=True)
+        self.tree.heading("#0", anchor="w", command=lambda: self._ordenar("#0"))
+        for cid, _chave, largura, ancora in colunas[1:]:
+            self.tree.column(cid, width=largura, minwidth=60, anchor=ancora, stretch=False)
+            self.tree.heading(cid, anchor=ancora, command=lambda c=cid: self._ordenar(c))
+
+        self.tree.tag_configure("bad", foreground="#ff4444")
+        self.tree.tag_configure("review", foreground="#ffb020")
+        self.tree.tag_configure("clean", foreground="#00ff99")
+        self.tree.tag_configure("unknown", foreground="#9aa0a6")
+        self.tree.bind("<<TreeviewSelect>>", self._ao_selecionar)
+
+        quadro_detalhe = tk.Frame(painel, bg="#1e1e1e")
+        self.detalhe = scrolledtext.ScrolledText(quadro_detalhe, wrap=tk.WORD, bg="#0f0f0f",
+                                                 fg="#dddddd", font=("Consolas", 10),
+                                                 relief=tk.FLAT, height=altura_detalhe,
+                                                 padx=10, pady=8)
+        self.detalhe.pack(fill="both", expand=True)
+        self.detalhe.tag_configure("cabecalho", font=("Consolas", 10, "bold"))
+        self.detalhe.tag_configure("dica", foreground="#6b6b6b")
+        self.detalhe.tag_configure("preambulo", foreground="#ffb020")
+        self.detalhe.config(state=tk.DISABLED)
+
+        painel.add(quadro_tabela, stretch="always", minsize=140)
+        painel.add(quadro_detalhe, stretch="never", minsize=90)
+
+        self.refresh_language()
+        self.clear()
+
+    def refresh_language(self):
+        self.tree.heading("#0", text=t(self.colunas[0][1]), anchor="w")
+        for cid, chave, _largura, ancora in self.colunas[1:]:
+            self.tree.heading(cid, text=t(chave), anchor=ancora)
+        if not self._ordem:
+            self.clear()
+
+    def clear(self):
+        self.tree.delete(*self.tree.get_children(""))
+        self._textos.clear()
+        self._ordem.clear()
+        self._preambulo = ""
+        self._ordenacao = (None, False)
+        self._escrever([(t("detail_hint"), "dica")])
+
+    def is_empty(self):
+        return not self._ordem
+
+    def add(self, iid, valores, texto, status, parent=""):
+        self.tree.insert(parent, "end", iid=iid, text=str(valores[0]),
+                         values=[str(v) for v in valores[1:]],
+                         tags=(VERDICT_TAGS.get(status, "clean"),), open=True)
+        self._textos[iid] = texto
+        self._ordem.append(iid)
+        self.tree.see(iid)
+        if len(self._ordem) == 1:
+            self.tree.selection_set(iid)
+
+    def set_preamble(self, texto):
+        self._preambulo = texto or ""
+        if self._preambulo:
+            self._escrever([(self._preambulo, "preambulo")])
+
+    def report(self):
+        partes = [self._preambulo] if self._preambulo else []
+        partes += [self._textos[iid] for iid in self._ordem if iid in self._textos]
+        return "\n\n".join(p.strip("\n") for p in partes) + "\n"
+
+    def _ao_selecionar(self, _=None):
+        selecao = self.tree.selection()
+        if selecao and selecao[0] in self._textos:
+            self._escrever_relatorio(self._textos[selecao[0]])
+
+    def _escrever(self, blocos):
+        self.detalhe.config(state=tk.NORMAL)
+        self.detalhe.delete("1.0", tk.END)
+        for texto, tag in blocos:
+            self.detalhe.insert(tk.END, texto + "\n", tag)
+        self.detalhe.config(state=tk.DISABLED)
+
+    def _escrever_relatorio(self, texto):
+        self.detalhe.config(state=tk.NORMAL)
+        self.detalhe.delete("1.0", tk.END)
+        for i, linha in enumerate(texto.split("\n")):
+            url = linha.strip()[2:].strip() if linha.strip().startswith("- ") else ""
+            if url.startswith("http"):
+                tag = f"link{i}"
+                self.detalhe.tag_configure(tag, foreground="#4da3ff", underline=True)
+                self.detalhe.tag_bind(tag, "<Button-1>", lambda e, u=url: webbrowser.open(u))
+                self.detalhe.tag_bind(tag, "<Enter>", lambda e: self.detalhe.config(cursor="hand2"))
+                self.detalhe.tag_bind(tag, "<Leave>", lambda e: self.detalhe.config(cursor=""))
+                self.detalhe.insert(tk.END, linha + "\n", tag)
+            else:
+                self.detalhe.insert(tk.END, linha + "\n", "cabecalho" if i == 0 else "")
+        self.detalhe.config(state=tk.DISABLED)
+
+    def _ordenar(self, coluna):
+        atual, invertido = self._ordenacao
+        invertido = not invertido if atual == coluna else False
+        raizes = list(self.tree.get_children(""))
+        pares = [(self._chave_ordem(self._valor(iid, coluna)), iid) for iid in raizes]
+        pares.sort(reverse=invertido)
+        for pos, (_chave, iid) in enumerate(pares):
+            self.tree.move(iid, "", pos)
+        self._ordenacao = (coluna, invertido)
+
+    def _valor(self, iid, coluna):
+        return self.tree.item(iid, "text") if coluna == "#0" else self.tree.set(iid, coluna)
+
+    @staticmethod
+    def _chave_ordem(valor):
+        bruto = str(valor).strip().rstrip("%")
+        try:
+            return (0, float(bruto), "")
+        except ValueError:
+            return (1, 0.0, str(valor).lower())
+
+
+class DriverIndisponivel(Exception):
+    def __init__(self, vivos, tamanho):
+        self.vivos = vivos
+        self.tamanho = tamanho
+        super().__init__(f"nenhum navegador disponivel ({vivos}/{tamanho})")
+
+
+class DriverPool:
+    """Pool de navegadores do X-Force.
+
+    O tamanho e calibragem medida: 3 sustenta o paralelismo sem disparar o bloqueio
+    do servico. Esta classe cuida do resto -- boot, timeout e substituicao.
+    """
+
+    TENTATIVAS = 3
+    ESPERA_ENTRE_TENTATIVAS = 3
+    TIMEOUT_EMPRESTIMO = 120
+
+    def __init__(self, tamanho=3, ao_degradar=None):
+        self.tamanho = tamanho
+        self.fila = Queue()
+        self.todos = []
+        self.vivos = 0
+        self.ultimo_erro = ""
+        self.boot_concluido = threading.Event()
+        self._lock = threading.Lock()
+        self._ao_degradar = ao_degradar
+
+    def iniciar_async(self):
+        Thread(target=self._boot, daemon=True).start()
+
+    def _boot(self):
+        # Em paralelo: serial triplicava o tempo ate o pool ficar utilizavel.
+        with ThreadPoolExecutor(max_workers=self.tamanho) as executor:
+            list(executor.map(self._subir_um, range(self.tamanho)))
+        self.boot_concluido.set()
+        if self.vivos < self.tamanho and self._ao_degradar:
+            self._ao_degradar(self.vivos, self.tamanho, self.ultimo_erro)
+
+    def _subir_um(self, _indice=0):
+        for tentativa in range(self.TENTATIVAS):
+            try:
+                driver = start_browser()
+            except Exception as e:
+                self.ultimo_erro = str(e)
+                if tentativa < self.TENTATIVAS - 1:
+                    time.sleep(self.ESPERA_ENTRE_TENTATIVAS)
+                continue
+            with self._lock:
+                self.todos.append(driver)
+                self.vivos += 1
+            self.fila.put(driver)
+            return True
+        return False
+
+    @contextmanager
+    def emprestar(self):
+        """Empresta um driver; levanta DriverIndisponivel em vez de pendurar para sempre."""
+        if self.boot_concluido.is_set() and self.vivos == 0:
+            raise DriverIndisponivel(0, self.tamanho)
+        try:
+            driver = self.fila.get(timeout=self.TIMEOUT_EMPRESTIMO)
+        except Empty:
+            raise DriverIndisponivel(self.vivos, self.tamanho)
+        try:
+            yield driver
+        finally:
+            if self._vivo(driver):
+                self.fila.put(driver)
+            else:
+                self._descartar(driver)
+
+    @staticmethod
+    def _vivo(driver):
+        try:
+            driver.window_handles
+            return True
+        except Exception:
+            return False
+
+    def _descartar(self, driver):
+        """Navegador morto nao volta para a fila: envenenaria toda consulta seguinte."""
+        with self._lock:
+            self.vivos -= 1
+            if driver in self.todos:
+                self.todos.remove(driver)
+            repor = self.vivos < self.tamanho
+        try:
+            driver.quit()
+        except Exception:
+            pass
+        if repor:
+            Thread(target=self._subir_um, daemon=True).start()
+
+    def encerrar(self):
+        with self._lock:
+            drivers = set(self.todos)
+            self.todos.clear()
+            self.vivos = 0
+        while True:
+            try:
+                drivers.add(self.fila.get_nowait())
+            except Empty:
+                break
+        if not drivers:
+            return
+        def _quit(d):
+            try:
+                d.quit()
+            except Exception:
+                pass
+        with ThreadPoolExecutor(max_workers=len(drivers)) as executor:
+            list(executor.map(_quit, drivers))
+
+
 class IPCheckerApp:
     def _init_drivers_async(self, count=3):
-        import time
-        def _start_with_retry(index, max_retries=3):
-            for attempt in range(max_retries):
-                try:
-                    driver = start_browser()
-                    self.driver_pool.put(driver)
-                    self.all_drivers.append(driver)
-                    return
-                except Exception as e:
-                    print(f"[AVISO] Driver {index + 1} tentativa {attempt + 1}/{max_retries} falhou: {e}")
-                    time.sleep(3)
-            print(f"[ERRO] Driver {index + 1} não pôde ser iniciado após {max_retries} tentativas")
-        for i in range(count):
-            _start_with_retry(i)
+        self.driver_pool.iniciar_async()
+
+    def _avisar_pool_degradado(self, vivos, tamanho, erro):
+        chave = "drivers_none" if vivos == 0 else "drivers_degraded"
+        self._ui(self.mostrar_aviso, t(chave).format(vivos=vivos, total=tamanho))
+        if erro:
+            print(f"[AVISO] Falha ao iniciar navegador: {erro}")
+
+    def mostrar_aviso(self, texto):
+        self.banner_label.config(text=f"⚠ {texto}")
+        self.banner.pack(fill="x", padx=10, pady=(6, 0), after=self.tab_frame)
+
     def refresh_language(self):
         for widget, key, attr in self.i18n_widgets:
             try:
@@ -353,26 +714,133 @@ class IPCheckerApp:
                     widget.config(**{attr: value})
             except Exception:
                 pass
+        for tabela in (self.tabela_ip, self.tabela_hash, self.tabela_url):
+            tabela.refresh_language()
+        for campo in (self.entry, self.hash_entry, self.url_entry):
+            campo.refresh()
     def _register_i18n(self, widget, key, attr="text"):
         self.i18n_widgets.append((widget, key, attr))
-    def _insert_colored(self, output_area, text, is_bad, needs_review=False):
-        lines = text.split("\n")
-        for i, line in enumerate(lines):
-            if needs_review:
-                tag = "header_review" if i == 0 else "review"
-            elif is_bad:
-                tag = "header_bad" if i == 0 else "bad"
+    def _montar_progresso(self, pagina):
+        quadro = tk.Frame(pagina, bg="#1e1e1e")
+        quadro.pack(fill="x", padx=10, pady=(2, 6))
+        barra = ttk.Progressbar(quadro, style="Scan.Horizontal.TProgressbar",
+                                mode="determinate", maximum=1, value=0)
+        barra.pack(fill="x")
+        rotulo = ttk.Label(quadro, text="", style="Status.TLabel")
+        rotulo.pack(anchor="w", pady=(3, 0))
+        return barra, rotulo
+
+    @staticmethod
+    def _contar_ips(bruto):
+        validos = invalidos = privados = 0
+        for item in dividir_entrada(bruto):
+            if not is_valid_ip(item):
+                invalidos += 1
+            elif ipaddress.ip_address(item).is_private:
+                privados += 1
             else:
-                tag = "header_clean" if i == 0 else "clean"
-            output_area.insert(tk.END, line + "\n", tag)
+                validos += 1
+        if not (validos or invalidos or privados):
+            return ""
+        partes = [f"{validos} {t('count_valid')}"]
+        if invalidos:
+            partes.append(f"{invalidos} {t('count_invalid')}")
+        if privados:
+            partes.append(f"{privados} {t('count_private')}")
+        return " · ".join(partes)
+
+    @staticmethod
+    def _contar_hashes(bruto):
+        itens = dividir_entrada(bruto)
+        if not itens:
+            return ""
+        validos = sum(1 for h in itens if re.fullmatch(r"[a-fA-F0-9]{32,64}", h))
+        partes = [f"{validos} {t('count_valid')}"]
+        if len(itens) - validos:
+            partes.append(f"{len(itens) - validos} {t('count_invalid')}")
+        return " · ".join(partes)
+
+    @staticmethod
+    def _contar_dominios(bruto):
+        itens = dividir_entrada(bruto)
+        return f"{len(itens)} {t('count_items')}" if itens else ""
+
+    def _ui(self, fn, *args):
+        """Agenda fn na thread da interface. Tk nao pode ser tocado pelas threads de varredura."""
+        try:
+            self.root.after(0, lambda: fn(*args))
+        except tk.TclError:
+            pass   # janela fechada no meio da varredura
+
+    def _track_processing(self, em_andamento, valor, ativo, atualizar_status):
+        def _aplicar():
+            if ativo:
+                em_andamento.add(valor)
+            else:
+                em_andamento.discard(valor)
+            atualizar_status()
+        self._ui(_aplicar)
+
+    def _update_action_buttons(self):
+        """Copiar/Exportar so com resultado na tela; Cancelar so durante a varredura."""
+        grupos = (
+            (self.tabela_ip, self.results_ip, self.scanning_ip,
+             self.copy_button, self.save_button, self.cancel_button),
+            (self.tabela_hash, self.results_hash, self.scanning_hash,
+             self.hash_copy_button, self.hash_save_button, self.hash_cancel_button),
+            (self.tabela_url, self.results_url, self.scanning_url,
+             self.url_copy_button, self.url_save_button, self.url_cancel_button),
+        )
+        for tabela, resultados, varrendo, copiar, exportar, cancelar in grupos:
+            copiar.config(state="disabled" if tabela.is_empty() else "normal")
+            exportar.config(state="normal" if resultados else "disabled")
+            cancelar.config(state="normal" if varrendo else "disabled")
+
+    FONTES_NOMES = {"abuse": "AbuseIPDB", "vt": "VirusTotal",
+                    "ibm": "IBM X-Force", "alien": "AlienVault"}
+
+    @classmethod
+    def _registrar_cota(cls, destino, estados):
+        for chave, estado in (estados or {}).items():
+            if estado == core.FONTE_COTA:
+                destino.add(cls.FONTES_NOMES.get(chave, chave))
+
+    def cancel_current(self):
+        """Esc cancela a varredura da aba visivel; sem varredura em andamento, nao faz nada."""
+        if self.current_page == "hash":
+            if self.scanning_hash:
+                self.cancel_check_hash()
+        elif self.current_page == "url":
+            if self.scanning_url:
+                self.cancel_check_url()
+        elif self.scanning_ip:
+            self.cancel_check()
+
     def __init__(self, root):
         self.root = root
         self.i18n_widgets = []
+        self.current_page = "ip"
+        # Toggles congelados no inicio da varredura: threads nao podem ler BooleanVar.
+        self.ibm_ip_ativo = True
+        self.ibm_hash_ativo = True
+        self.ibm_url_ativo = True
+        self.check_ips_url_ativo = True
         self.ip_results_by_domain = {}
         self.currently_processing = set()
         self.bad_ips = set()
         self.review_ips = set()
         self.review_urls = set()
+        self.ignorados_ip = []
+        self.ignorados_hash = []
+        self.incompletos_ip = set()
+        self.incompletos_hash = set()
+        self.incompletos_url = set()
+        self.cota_ip = set()
+        self.cota_hash = set()
+        self.cota_url = set()
+        self.total_ip = self.feitos_ip = 0
+        self.total_hash = self.feitos_hash = 0
+        self.total_url = self.feitos_url = 0
         root.title(f"IP Shark {__version__} - by @alexsilva.sh in Github")
         self.root.configure(bg="#1e1e1e")        
         self.currently_processing = set()
@@ -381,6 +849,10 @@ class IPCheckerApp:
         self.root.configure(bg="#1e1e1e")
         self.tab_frame = tk.Frame(self.root, bg="#1e1e1e")
         self.tab_frame.pack(pady=(5, 0))
+        self.banner = tk.Frame(self.root, bg="#3a2a12")
+        self.banner_label = tk.Label(self.banner, bg="#3a2a12", fg="#ffb020",
+                                     font=("Segoe UI", 9), justify="left", wraplength=1000)
+        self.banner_label.pack(side="left", padx=12, pady=6)
         self.ip_button = ttk.Button(self.tab_frame,text=t("tab_ip"),command=self.show_ip_page,style="NavActive.TButton")
         self.ip_button.grid(row=0,column=0,padx=5)        
         self._register_i18n(self.ip_button, "tab_ip")
@@ -390,18 +862,16 @@ class IPCheckerApp:
         self.page_ip.pack(fill=tk.BOTH, expand=True)
         self.page_hash = tk.Frame(root, bg="#1e1e1e")
         self.page_hash.pack_forget()
-        self.driver_pool = Queue()
-        self.all_drivers = []
-        Thread(target=self._init_drivers_async, daemon=True).start()
+        self.driver_pool = DriverPool(ao_degradar=self._avisar_pool_degradado)
+        self._init_drivers_async()
 
         # CONTEUDO DA ABA IP
         self.input_label = ttk.Label(self.page_ip,text=t("paste_ips"),style="Title.TLabel")
         self.input_label.pack(pady=(10,2))
         self._register_i18n(self.input_label, "paste_ips")
-        self.entry = ttk.Entry(self.page_ip,font=("Consolas",10))
-        self.entry.pack(pady=6,padx=20,fill="x")
-        self.entry.configure(style="Custom.TEntry")
-        
+        self.entry = MultilineInput(self.page_ip, self._contar_ips)
+        self.entry.pack(pady=6, padx=20, fill="x")
+
         # ---------- interruptores (aba IP) ---------------------------
         toggles_ip = tk.Frame(self.page_ip, bg="#1e1e1e")
         toggles_ip.pack(pady=6)
@@ -423,21 +893,21 @@ class IPCheckerApp:
         self.check_button = ttk.Button(self.page_ip,text=t("btn_check_ip"),command=self.run_check,style="Primary.TButton")
         self.check_button.pack(pady=12)
         self._register_i18n(self.check_button, "btn_check_ip")        
-        self.status_label = ttk.Label(self.page_ip,text="",style="Status.TLabel")
-        self.status_label.pack()
+        self.progress_ip, self.status_label = self._montar_progresso(self.page_ip)
         self.button_frame = tk.Frame(self.page_ip, bg="#1e1e1e")
         self.button_frame.pack(side=tk.BOTTOM, pady=10, fill=tk.X)
         self.button_frame.grid_columnconfigure(0, weight=1)
-        self.button_frame.grid_columnconfigure(4, weight=1)        
-        self.output_area = scrolledtext.ScrolledText(self.page_ip,wrap=tk.NONE,bg="#0f0f0f",fg="#00ff99",insertbackground="white",font=("Consolas",10),relief=tk.FLAT)
-        self.output_area.pack(padx=10, pady=(0,5), fill=tk.BOTH, expand=True)
-        self.output_area.tag_configure("bad", foreground="#ff4444")
-        self.output_area.tag_configure("clean", foreground="#00ff99")
-        self.output_area.tag_configure("header_bad", foreground="#ff4444", font=("Consolas", 10, "bold"))
-        self.output_area.tag_configure("header_clean", foreground="#00ff99", font=("Consolas", 10, "bold"))
-        self.output_area.tag_configure("review", foreground="#ffb020")
-        self.output_area.tag_configure("header_review", foreground="#ffb020", font=("Consolas", 10, "bold"))
-        
+        self.button_frame.grid_columnconfigure(4, weight=1)
+        self.tabela_ip = ResultTable(self.page_ip, [
+            ("#0", "csv_ip", 210, "w"),
+            ("veredito", "col_verdict", 160, "w"),
+            ("abuse", "col_abuse", 95, "center"),
+            ("vt", "col_vt", 95, "center"),
+            ("ibm", "col_ibm", 85, "center"),
+            ("pais", "col_country", 140, "w"),
+        ])
+        self.tabela_ip.pack(padx=10, pady=(0, 5), fill=tk.BOTH, expand=True)
+
         self.copy_button = ttk.Button(self.button_frame,text=t("btn_copy"),command=self.copy_output,style="Secondary.TButton")
         self.copy_button.grid(row=0,column=1,padx=10)
         self._register_i18n(self.copy_button, "btn_copy")
@@ -460,10 +930,9 @@ class IPCheckerApp:
         self._register_i18n(self.hash_button, "tab_hash")
         self._register_i18n(self.input_label_hash, "paste_hashes")
         self.input_label_hash.pack(pady=(10, 2))
-        self.hash_entry = ttk.Entry(self.page_hash,font=("Consolas",10))
-        self.hash_entry.pack(pady=6,padx=20,fill="x")
-        self.hash_entry.configure(style="Custom.TEntry")
-        
+        self.hash_entry = MultilineInput(self.page_hash, self._contar_hashes)
+        self.hash_entry.pack(pady=6, padx=20, fill="x")
+
         # ---------- interruptores (aba HASH) ---------------------------
         toggles_hash = tk.Frame(self.page_hash, bg="#1e1e1e")
         toggles_hash.pack(pady=6)
@@ -492,21 +961,22 @@ class IPCheckerApp:
         self.hash_button_action.pack(pady=12)
         self._register_i18n(self.hash_button_action, "btn_check_hash")
         self.currently_processing_hashes = set()
-        self.hash_status_label = ttk.Label(self.page_hash,text="",style="Status.TLabel")
-        self.hash_status_label.pack()
-        
+        self.progress_hash, self.hash_status_label = self._montar_progresso(self.page_hash)
+
         self.hash_button_frame = tk.Frame(self.page_hash, bg="#1e1e1e")
         self.hash_button_frame.pack(side=tk.BOTTOM, pady=10, fill=tk.X)
         self.hash_button_frame.grid_columnconfigure(0, weight=1)
         self.hash_button_frame.grid_columnconfigure(4, weight=1)
-        self.hash_output_area = scrolledtext.ScrolledText(self.page_hash,wrap=tk.NONE,bg="#0f0f0f",fg="#00ff99",insertbackground="white",font=("Consolas",10),relief=tk.FLAT)
-        self.hash_output_area.pack(padx=10, pady=(0, 5), fill=tk.BOTH, expand=True)
-        
-        self.hash_output_area.tag_configure("bad", foreground="#ff4444")
-        self.hash_output_area.tag_configure("clean", foreground="#00ff99")
-        self.hash_output_area.tag_configure("header_bad", foreground="#ff4444", font=("Consolas", 10, "bold"))
-        self.hash_output_area.tag_configure("header_clean", foreground="#00ff99", font=("Consolas", 10, "bold"))
-        
+        self.tabela_hash = ResultTable(self.page_hash, [
+            ("#0", "csv_hash", 300, "w"),
+            ("veredito", "col_verdict", 160, "w"),
+            ("vt", "col_vt", 95, "center"),
+            ("ibm", "col_ibm", 85, "center"),
+            ("alien", "col_alien", 95, "center"),
+            ("arquivo", "col_file", 200, "w"),
+        ])
+        self.tabela_hash.pack(padx=10, pady=(0, 5), fill=tk.BOTH, expand=True)
+
         self.hash_copy_button = ttk.Button(self.hash_button_frame,text=t("btn_copy"),command=self.copy_hash_output,style="Secondary.TButton")
         self.hash_copy_button.grid(row=0, column=1, padx=10)
         self._register_i18n(self.hash_copy_button, "btn_copy")
@@ -528,9 +998,8 @@ class IPCheckerApp:
         self._register_i18n(self.url_button, "tab_domain")
         self._register_i18n(self.input_label_url, "paste_domains")
         self.input_label_url.pack(pady=(10, 2))
-        self.url_entry = ttk.Entry(self.page_url,font=("Consolas",10))
-        self.url_entry.pack(pady=6,padx=20,fill="x")
-        self.url_entry.configure(style="Custom.TEntry")
+        self.url_entry = MultilineInput(self.page_url, self._contar_dominios)
+        self.url_entry.pack(pady=6, padx=20, fill="x")
         toggles_url = tk.Frame(self.page_url, bg="#1e1e1e")
         toggles_url.pack(pady=6)
         self.ibm_var_url = tk.BooleanVar(value=True)
@@ -563,20 +1032,19 @@ class IPCheckerApp:
         self.url_button_action = ttk.Button(self.page_url,text=t("btn_check_domain"),command=self.run_url_check,style="Primary.TButton")
         self.url_button_action.pack(pady=12)
         self._register_i18n(self.url_button_action, "btn_check_domain")
-        self.url_status_label = ttk.Label(self.page_url,text="",style="Status.TLabel")
-        self.url_status_label.pack()
+        self.progress_url, self.url_status_label = self._montar_progresso(self.page_url)
         self.url_button_frame = tk.Frame(self.page_url, bg="#1e1e1e")
         self.url_button_frame.pack(side=tk.BOTTOM, pady=10, fill=tk.X)
-        self.url_output_area = scrolledtext.ScrolledText(self.page_url,wrap=tk.NONE,bg="#0f0f0f",fg="#00ff99",insertbackground="white",font=("Consolas",10),relief=tk.FLAT)
-        self.url_output_area.pack(padx=10, pady=(0, 5), fill=tk.BOTH, expand=True)
-        
-        self.url_output_area.tag_configure("bad", foreground="#ff4444")
-        self.url_output_area.tag_configure("clean", foreground="#00ff99")
-        self.url_output_area.tag_configure("header_bad", foreground="#ff4444", font=("Consolas", 10, "bold"))
-        self.url_output_area.tag_configure("header_clean", foreground="#00ff99", font=("Consolas", 10, "bold"))
-        self.url_output_area.tag_configure("review", foreground="#ffb020")
-        self.url_output_area.tag_configure("header_review", foreground="#ffb020", font=("Consolas", 10, "bold"))
-        
+        self.tabela_url = ResultTable(self.page_url, [
+            ("#0", "csv_domain", 260, "w"),
+            ("veredito", "col_verdict", 160, "w"),
+            ("abuse", "col_abuse", 95, "center"),
+            ("vt", "col_vt", 95, "center"),
+            ("ibm", "col_ibm", 85, "center"),
+            ("alien", "col_alien", 95, "center"),
+        ])
+        self.tabela_url.pack(padx=10, pady=(0, 5), fill=tk.BOTH, expand=True)
+
         self.url_button_frame.grid_columnconfigure(0, weight=1)
         self.url_button_frame.grid_columnconfigure(4, weight=1)
         self.url_copy_button = ttk.Button(self.url_button_frame,text=t("btn_copy"),command=self.copy_url_output,style="Secondary.TButton")
@@ -594,6 +1062,15 @@ class IPCheckerApp:
         self.ip_button.config(style="NavActive.TButton")
         self.hash_button.config(style="Nav.TButton")
         self.url_button.config(style="Nav.TButton")
+
+        # Enter quebra linha no campo multi-linha, entao a consulta fica no Ctrl+Enter.
+        for campo, acao in ((self.entry, self.run_check),
+                            (self.hash_entry, self.run_hash_check),
+                            (self.url_entry, self.run_url_check)):
+            campo.texto.bind("<Control-Return>", lambda e, a=acao: (a(), "break")[1])
+        self.root.bind("<Escape>", lambda e: self.cancel_current())
+
+        self._update_action_buttons()
 
     def _update_mss_state_hash(self, *args):
         if self.pre_var_hash.get():
@@ -617,6 +1094,7 @@ class IPCheckerApp:
         self.page_hash.pack_forget()
         self.page_url.pack_forget()
         self.page_ip.pack(fill=tk.BOTH, expand=True)
+        self.current_page = "ip"
         self.ip_button.config(style="NavActive.TButton")
         self.hash_button.config(style="Nav.TButton")
         self.url_button.config(style="Nav.TButton")
@@ -625,6 +1103,7 @@ class IPCheckerApp:
         self.page_ip.pack_forget()
         self.page_url.pack_forget()
         self.page_hash.pack(fill=tk.BOTH, expand=True)
+        self.current_page = "hash"
         self.ip_button.config(style="Nav.TButton")
         self.hash_button.config(style="NavActive.TButton")
         self.url_button.config(style="Nav.TButton")
@@ -633,6 +1112,7 @@ class IPCheckerApp:
         self.page_ip.pack_forget()
         self.page_hash.pack_forget()
         self.page_url.pack(fill=tk.BOTH, expand=True)
+        self.current_page = "url"
         self.ip_button.config(style="Nav.TButton")
         self.hash_button.config(style="Nav.TButton")
         self.url_button.config(style="NavActive.TButton")
@@ -642,64 +1122,84 @@ class IPCheckerApp:
             messagebox.showwarning(t("done"), t("scan_already_running_hash"))
             return
         self.bad_hashes = set()
-        self.hash_output_area.delete("1.0", tk.END)
-        raw_hashes = self.hash_entry.get()
-        cleaned_hashes = re.sub(r"[\s\n]+", ",", raw_hashes)
-        all_hashes = [h.strip().lower() for h in cleaned_hashes.split(",") if h.strip()]
-        hash_list = []
-        invalid_hashes = []
-        for h in all_hashes:
+        self.incompletos_hash = set()
+        self.cota_hash = set()
+        self.tabela_hash.clear()
+        hash_list, invalid_hashes = [], []
+        for h in [item.lower() for item in dividir_entrada(self.hash_entry.get_text())]:
             if re.fullmatch(r"[a-fA-F0-9]{32,64}", h):
                 hash_list.append(h)
             else:
                 invalid_hashes.append(h)
-        if invalid_hashes:
-            messagebox.showwarning(t("invalid_hashes_title"), t("invalid_hashes_msg") + "\n" + "\n".join(invalid_hashes))
         if not hash_list:
             messagebox.showerror(t("error"), t("no_valid_hash"))
             return
+        self.ignorados_hash = invalid_hashes
         self.results_hash = []
-        self.results_url = []
         self.stop_flag = False
         self.currently_processing_hashes.clear()
-        self.update_status_label_hash()
+        self.hash_status_label.config(text="")
         self.scanning_hash = True
+        self.ibm_hash_ativo = self.ibm_var_hash.get()
+        self.total_hash, self.feitos_hash = len(hash_list), 0
         self.hash_button_action.config(state="disabled")
+        self._update_action_buttons()
+        self.update_status_label_hash()
         def thread_run():
             try:
                 for i, h in enumerate(hash_list):
                     if self.stop_flag:
                         break
-                    self.currently_processing_hashes.add(h)
-                    self.update_status_label_hash()
-                    result_text, bad = self.process_hash(h, i + 1, total_hashes=len(hash_list))
+                    self._track_processing(self.currently_processing_hashes, h, True,
+                                           self.update_status_label_hash)
+                    texto, status, colunas, estados = self.process_hash(h, i + 1, total_hashes=len(hash_list))
                     if self.stop_flag:
                         break
-                    if bad:
+                    if status == "bad":
                         self.bad_hashes.add(h)
-                    self._insert_colored(self.hash_output_area, result_text, bad)
-                    self.hash_output_area.insert(tk.END, "\n")
-                    self.hash_output_area.see(tk.END)
-                    self.currently_processing_hashes.discard(h)
-                    self.update_status_label_hash()
+                    elif status == "incompleto":
+                        self.incompletos_hash.add(h)
+                    self._registrar_cota(self.cota_hash, estados)
+                    self._track_processing(self.currently_processing_hashes, h, False,
+                                           self.update_status_label_hash)
+                    self._ui(self._linha_hash, i + 1, colunas, texto, status)
                 if not self.stop_flag:
-                    self._append_analysis_hash()
-                    messagebox.showinfo(t("done"), t("hash_scan_finished"))
+                    self._ui(self._finish_hash_scan)
             finally:
                 self.scanning_hash = False
-                self.root.after(0, lambda: self.hash_button_action.config(state="normal"))
+                self._ui(self._scan_stopped_hash)
         Thread(target=thread_run, daemon=True).start()
 
+    def _linha_hash(self, indice, colunas, texto, status):
+        self.tabela_hash.add(f"hash-{indice}", colunas, texto, status)
+        self.feitos_hash += 1
+        self.update_status_label_hash()
+        self._update_action_buttons()
+
+    def _finish_hash_scan(self):
+        self._append_analysis_hash()
+        self.progress_hash.config(value=self.total_hash)
+        self.hash_status_label.config(text=f"✅ {t('hash_scan_finished')}")
+
+    def _scan_stopped_hash(self):
+        self.hash_button_action.config(state="normal")
+        self._update_action_buttons()
+
     def _append_analysis_hash(self):
-        if not self.pre_var_hash.get():
-            return
-        if self.bad_hashes:
-            chave = "hash_bad_mss" if self.mss_var_hash.get() else "hash_bad_no_mss"
-            texto = _t_plural(chave, self.bad_hashes)
-        else:
-            texto = _t_plural("hash_clean", self.results_hash)
-        self.hash_output_area.insert("1.0", texto + "\n\n")
-        self.hash_output_area.see("1.0")
+        blocos = []
+        if self.cota_hash:
+            blocos.append(t("quota_warning").format(fontes=", ".join(sorted(self.cota_hash))))
+        if self.ignorados_hash:
+            blocos.append(f"{t('skipped_items')}: {', '.join(self.ignorados_hash)}")
+        if self.incompletos_hash:
+            blocos.append(t("incomplete_review").format(lista=", ".join(sorted(self.incompletos_hash))))
+        if self.pre_var_hash.get():
+            if self.bad_hashes:
+                chave = "hash_bad_mss" if self.mss_var_hash.get() else "hash_bad_no_mss"
+                blocos.append(_t_plural(chave, self.bad_hashes))
+            elif not self.incompletos_hash:
+                blocos.append(_t_plural("hash_clean", self.results_hash))
+        self.tabela_hash.set_preamble("\n\n".join(blocos))
 
     def run_url_check(self):
         if self.scanning_url:
@@ -708,20 +1208,24 @@ class IPCheckerApp:
         self.results_url.clear()
         self.bad_urls = set()
         self.review_urls = set()
+        self.incompletos_url = set()
+        self.cota_url = set()
         self.ip_results_by_domain = {}
-        from ip_checker_core import check_url_virustotal, check_url_ibm
-        self.url_output_area.delete("1.0", tk.END)
-        raw_urls = self.url_entry.get()
-        cleaned_urls = re.sub(r"[\s\n]+", ",", raw_urls)
-        url_list = [u.strip() for u in cleaned_urls.split(",") if u.strip()]
+        self.tabela_url.clear()
+        url_list = dividir_entrada(self.url_entry.get_text())
         if not url_list:
             messagebox.showerror(t("error"), t("no_domain"))
             return
         self.stop_flag = False
         self.currently_processing_urls.clear()
-        self.update_status_label_url()
+        self.url_status_label.config(text="")
         self.scanning_url = True
+        self.ibm_url_ativo = self.ibm_var_url.get()
+        self.check_ips_url_ativo = self.check_ips_var_url.get()
+        self.total_url, self.feitos_url = len(url_list), 0
         self.url_button_action.config(state="disabled")
+        self._update_action_buttons()
+        self.update_status_label_url()
         def thread_run():
             try:
                 for i, raw_url in enumerate(url_list):
@@ -739,183 +1243,223 @@ class IPCheckerApp:
                             url = raw_url
                     except Exception:
                         url = raw_url
-                    self.currently_processing_urls.add(url)
-                    self.update_status_label_url()
+                    self._track_processing(self.currently_processing_urls, url, True,
+                                           self.update_status_label_url)
                     if self.stop_flag:
                         break
-                    result_vt = check_url_virustotal(url)
+                    result_vt, estado_vt = check_url_virustotal(url)
                     if self.stop_flag:
                         break
-                    if result_vt.get("not_found"):
-                        vt_score = t("no_records")
-                    else:
-                        vt_score = result_vt.get("score", "-")
-                    ibm_score = "-"
-                    if self.ibm_var_url.get() and not self.stop_flag:
-                        driver = self.driver_pool.get()
+                    vt_score = result_vt.get("score")
+                    ibm_score, estado_ibm = "-", None
+                    if self.ibm_url_ativo and not self.stop_flag:
                         try:
-                            ibm_score = check_url_ibm(driver, url)
-                            if isinstance(ibm_score, str) and ibm_score.lower() == "unknown":
+                            with self.driver_pool.emprestar() as driver:
+                                ibm_score = check_url_ibm(driver, url)
+                            estado_ibm = core.classificar_ibm(ibm_score)
+                            if estado_ibm == core.FONTE_SEM_DADOS:
                                 ibm_score = t("unknown")
-                        finally:
-                            self.driver_pool.put(driver)
+                        except DriverIndisponivel:
+                            ibm_score, estado_ibm = None, core.FONTE_INDISPONIVEL
                     if self.stop_flag:
                         break
-                    alien_score, alien_link = check_url_alienvault(url)
+                    alien_score, alien_link, estado_alien = check_url_alienvault(url)
                     vt_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
                     vt_link = f"https://www.virustotal.com/gui/url/{vt_id}"
                     ibm_link = f"https://exchange.xforce.ibmcloud.com/url/{url}"
-                    output, bad = self.process_url(i + 1, url, vt_score, ibm_score, vt_link, ibm_link, alien_score, alien_link, total_urls=len(url_list))
-                    if bad:
+                    estados = {"vt": estado_vt, "ibm": estado_ibm, "alien": estado_alien}
+                    output, status, colunas = self.process_url(
+                        i + 1, url, vt_score, ibm_score, vt_link, ibm_link,
+                        alien_score, alien_link, estados, total_urls=len(url_list))
+                    if status == "bad":
                         self.bad_urls.add(url)
-                    self._insert_colored(self.url_output_area, output, bad)
-                    self.url_output_area.insert(tk.END, "\n")
-                    self.url_output_area.see(tk.END)
-                    self.currently_processing_urls.discard(url)
-                    self.update_status_label_url()
-                    if self.ibm_var_url.get():
-                        self.results_url.append([url, vt_score, ibm_score, alien_score, vt_link, ibm_link, alien_link])
+                    elif status == "incompleto":
+                        self.incompletos_url.add(url)
+                    self._registrar_cota(self.cota_url, estados)
+                    self._track_processing(self.currently_processing_urls, url, False,
+                                           self.update_status_label_url)
+                    vt_texto = texto_fonte(vt_score, estado_vt)
+                    alien_texto = texto_fonte(alien_score, estado_alien)
+                    if self.ibm_url_ativo:
+                        self.results_url.append([url, vt_texto, texto_fonte(ibm_score, estado_ibm), alien_texto, vt_link, ibm_link, alien_link])
                     else:
-                        self.results_url.append([url, vt_score, alien_score, vt_link, alien_link])
-                    if self.check_ips_var_url.get() and not self.stop_flag:
+                        self.results_url.append([url, vt_texto, alien_texto, vt_link, alien_link])
+                    self._ui(self._linha_url, i + 1, colunas, output, status)
+                    if self.check_ips_url_ativo and not self.stop_flag:
                         domain = url
                         resolved_ips = self._resolve_domain_via_google_dns(domain)
                         if not resolved_ips:
                             resolved_ips = self._resolve_domain_with_socket(domain)
                         resolved_ips = sorted(set(resolved_ips))
-                        if resolved_ips:
-                            self.url_output_area.insert(tk.END, f"[{domain}] {_t_plural('domain_ips', resolved_ips)}: {', '.join(resolved_ips)}\n\n")
-                        else:
-                            self.url_output_area.insert(tk.END, f"[{domain}] {t('domain_no_ip')}\n\n")
                         self.ip_results_by_domain[domain] = []
+                        if not resolved_ips:
+                            self._ui(self._linha_url_filha, i + 1, 0,
+                                     (t("domain_no_ip"), t("verdict_unknown"), "-", "-", "-", "-"),
+                                     f"[{domain}] {t('domain_no_ip')}", "unknown")
                         for j, ip in enumerate(resolved_ips, 1):
                             if self.stop_flag:
                                 break
-                            ip_output, ip_status, ip_csv_data = self.process_url_ip_associated(ip, domain)
-                            ip_output = ip_output.lstrip("\n")
-                            ip_bad = ip_status == "bad"
-                            ip_review = ip_status == "whitelisted_bad"
-                            self._insert_colored(self.url_output_area, ip_output, ip_bad, ip_review)
-                            self.url_output_area.insert(tk.END, "\n")
-                            self.url_output_area.see(tk.END)
-                            if ip_bad:
-                                self.bad_urls.add(f"{ip} (associado ao Domínio)")
-                            if ip_review:
+                            ip_output, ip_status, ip_csv_data, ip_colunas, ip_estados = self.process_url_ip_associated(ip, domain)
+                            self._ui(self._linha_url_filha, i + 1, j, ip_colunas,
+                                     ip_output.lstrip("\n"), ip_status)
+                            self._registrar_cota(self.cota_url, ip_estados)
+                            if ip_status == "bad":
+                                self.bad_urls.add(f"{ip} ({t('associated_to_domain')} {domain})")
+                            if ip_status == "whitelisted_bad":
                                 self.review_urls.add(ip)
+                            if ip_status in ("incompleto", "unknown"):
+                                self.incompletos_url.add(ip)
                             if ip_csv_data:
                                 self.ip_results_by_domain[domain].append(ip_csv_data)
                 if not self.stop_flag:
-                    self._append_analysis_url()
-                    messagebox.showinfo(t("done"), t("domain_scan_finished"))
+                    self._ui(self._finish_url_scan)
             finally:
                 self.scanning_url = False
-                self.root.after(0, lambda: self.url_button_action.config(state="normal"))
+                self._ui(self._scan_stopped_url)
         Thread(target=thread_run, daemon=True).start()
 
+    def _linha_url(self, indice, colunas, texto, status):
+        self.tabela_url.add(f"url-{indice}", colunas, texto, status)
+        self.feitos_url += 1
+        self.update_status_label_url()
+        self._update_action_buttons()
+
+    def _linha_url_filha(self, indice, sub, colunas, texto, status):
+        self.tabela_url.add(f"url-{indice}-ip-{sub}", colunas, texto, status,
+                            parent=f"url-{indice}")
+
+    def _finish_url_scan(self):
+        self._append_analysis_url()
+        self.progress_url.config(value=self.total_url)
+        self.url_status_label.config(text=f"✅ {t('domain_scan_finished')}")
+
+    def _scan_stopped_url(self):
+        self.url_button_action.config(state="normal")
+        self._update_action_buttons()
+
     def _append_analysis_url(self):
-        if not self.pre_var_url.get():
-            return
         blocos = []
+        if self.cota_url:
+            blocos.append(t("quota_warning").format(fontes=", ".join(sorted(self.cota_url))))
+        if self.incompletos_url:
+            blocos.append(t("incomplete_review").format(lista=", ".join(sorted(self.incompletos_url))))
+        if not self.pre_var_url.get():
+            self.tabela_url.set_preamble("\n\n".join(blocos))
+            return
         if self.bad_urls:
             chave = "url_bad_mss" if self.mss_var_url.get() else "url_bad_no_mss"
             blocos.append(_t_plural(chave, self.bad_urls))
         if self.review_urls:
             blocos.append(_t_plural("ip_whitelist_review", self.review_urls))
-        if not blocos:
+        if not self.bad_urls and not self.review_urls and not self.incompletos_url:
             blocos.append(_t_plural("url_clean", self.results_url))
-        self.url_output_area.insert("1.0", "\n\n".join(blocos) + "\n\n")
-        self.url_output_area.see("1.0")
+        self.tabela_url.set_preamble("\n\n".join(blocos))
 
     def update_status_label_url(self):
+        if not self.scanning_url:
+            return
+        self.progress_url.config(maximum=max(self.total_url, 1), value=self.feitos_url)
+        partes = [t("progress_done").format(feitos=self.feitos_url, total=self.total_url)]
         if self.currently_processing_urls:
-            inline = " | ".join(sorted(self.currently_processing_urls))
-            status = f"{t('checking_domains')}: {inline}"
-        else:
-            status = ""
-        self.url_status_label.config(text=status)
+            partes.append(f"{t('checking_domains')}: {' | '.join(sorted(self.currently_processing_urls))}")
+        self.url_status_label.config(text=" · ".join(partes))
 
     def copy_url_output(self):
-        pyperclip.copy(self.url_output_area.get("1.0", tk.END))
+        pyperclip.copy(self.tabela_url.report())
 
     def cancel_check_url(self):
         self.stop_flag = True
         self.url_status_label.config(text=f"❌ {t('scan_cancelled')}")
         self.scanning_url = False
         self.url_button_action.config(state="normal")
-    def process_url(self, index, url, vt_score, ibm_score, vt_link, ibm_link, alien_score, alien_link, total_urls=1):
-        reputation = t("reputation_clean")
-        try:
-            is_malicious = False
-            
+        self._update_action_buttons()
+    def process_url(self, index, url, vt_score, ibm_score, vt_link, ibm_link,
+                    alien_score, alien_link, estados, total_urls=1):
+        estado_vt = estados.get("vt")
+        estado_ibm = estados.get("ibm")
+        estado_alien = estados.get("alien")
+
+        is_malicious = False
+        if estado_vt == core.FONTE_OK and (vt_score or 0) > 0:
+            is_malicious = True
+        if estado_ibm == core.FONTE_OK:
             try:
-                vt_val = int(vt_score)
-            except (ValueError, TypeError):
-                vt_val = 0
-            if vt_val > 0:
-                is_malicious = True
-            try:
-                ibm_val = float(ibm_score)
-                if ibm_val >= 2:
+                if float(ibm_score) >= 2:
                     is_malicious = True
             except (ValueError, TypeError):
-                if isinstance(ibm_score, str) and ibm_score.strip().lower() in ("high", "medium"):
+                if str(ibm_score).strip().lower() in ("high", "medium"):
                     is_malicious = True
-            if alien_score and alien_score.strip().lower() not in ("clean", "-", "unknown", "0"):
-                is_malicious = True
-            if is_malicious:
-                reputation = t("reputation_bad")
-        except Exception:
-            reputation = t("unknown")
-        # Se só tiver uma URL, mostra [domínio]
+        if estado_alien == core.FONTE_OK and str(alien_score).strip() not in ("0", "-", ""):
+            is_malicious = True
+
+        fontes_fora = [nome for nome, estado in (
+            ("VirusTotal", estado_vt), ("IBM X-Force", estado_ibm), ("AlienVault", estado_alien)
+        ) if estado in core.ESTADOS_SEM_RESPOSTA]
+        status = "bad" if is_malicious else ("incompleto" if fontes_fora else "clean")
+        reputation = {"bad": t("reputation_bad"),
+                      "incompleto": t("verdict_incomplete")}.get(status, t("reputation_clean"))
+
         if total_urls == 1:
             first_line = f"[{url}] - {reputation}"
         else:
             first_line = f"[{index}] {url} - {reputation}"
 
-        lines = [first_line, f"{t('vt_score')}: {vt_score}"]
-        if self.ibm_var_url.get():
-            lines.append(f"IBM X-Force score: {ibm_score}")
-        lines.append(f"AlienVault score: {alien_score}")
+        lines = [first_line]
+        if fontes_fora:
+            lines.append(t("sources_incomplete").format(fontes=", ".join(fontes_fora)))
+        lines.append(f"{t('vt_score')}: {texto_fonte(vt_score, estado_vt)}")
+        if self.ibm_url_ativo:
+            lines.append(f"{t('ibm_score')}: {texto_fonte(ibm_score, estado_ibm)}")
+        lines.append(f"{t('alien_score')}: {texto_fonte(alien_score, estado_alien)}")
         lines.append(f"- {vt_link}")
-        if self.ibm_var_url.get():
+        if self.ibm_url_ativo:
             lines.append(f"- {ibm_link}")
         lines.append(f"- {alien_link}")
 
-        is_bad = is_malicious
-        return "\n".join(lines), is_bad
+        colunas = (url, t(VERDICT_KEYS[status]), "-", coluna_fonte(vt_score, estado_vt),
+                   coluna_fonte(ibm_score, estado_ibm) if self.ibm_url_ativo else "-",
+                   coluna_fonte(alien_score, estado_alien))
+        return "\n".join(lines), status, colunas
 
     def process_hash(self, h, index, total_hashes=1):
-        from ip_checker_core import check_hash_alienvault
         vt_link = f"https://www.virustotal.com/gui/file/{h}"
         ibm_link = f"https://exchange.xforce.ibmcloud.com/malware/{h}"
         alien_link = f"https://otx.alienvault.com/indicator/file/{h}"
         ibm_score = "-"
         alien_score = "-"
         reputation = t("no_records")
-        include_ibm = self.ibm_var_hash.get()
+        include_ibm = self.ibm_hash_ativo
+        estado_ibm = None
+        malicioso = False
 
         # IBM
         if include_ibm:
-            driver = self.driver_pool.get()
             try:
-                _, ibm_score = check_hash_ibm(driver, h)
-                if ibm_score and ibm_score.strip().lower() == "unknown":
+                with self.driver_pool.emprestar() as driver:
+                    _, ibm_score = check_hash_ibm(driver, h)
+                estado_ibm = core.classificar_ibm(ibm_score)
+                if estado_ibm == core.FONTE_SEM_DADOS:
                     ibm_score = t("unknown")
-            finally:
-                self.driver_pool.put(driver)
+            except DriverIndisponivel:
+                ibm_score, estado_ibm = None, core.FONTE_INDISPONIVEL
 
             if isinstance(ibm_score, str) and ibm_score.strip().lower() in ("high", "medium"):
+                malicioso = True
                 reputation = t("reputation_bad")
 
         # AlienVault
-        alien_score, alien_link = check_hash_alienvault(h)
+        alien_score, alien_link, estado_alien = check_hash_alienvault(h)
+        if estado_alien == core.FONTE_OK and alien_score not in ("0", None):
+            malicioso = True
 
         # VirusTotal
-        result = check_hash_virustotal(h)
-        if not result or "data" not in result or "attributes" not in result["data"]:
-            vt_score = t("no_records")
+        result, estado_vt = check_hash_virustotal(h)
+        if estado_vt != core.FONTE_OK or not result or "data" not in result or "attributes" not in result["data"]:
+            vt_score = None
             name = "-"
             data_fmt = "N/A"
+            if estado_vt == core.FONTE_OK:
+                estado_vt = core.FONTE_SEM_DADOS
         else:
             attrs = result["data"]["attributes"]
             name = safe_get(attrs, "meaningful_name", default=t("unknown"))
@@ -927,31 +1471,46 @@ class IPCheckerApp:
             else:
                 data_fmt = "N/A"
             if vt_score > 0:
+                malicioso = True
                 reputation = t("reputation_bad")
-            else:
+            elif not malicioso:
                 reputation = t("reputation_clean")
         # Joe Sandbox
         joe_found = False
         joe_link  = f"https://www.joesandbox.com/analysis/search?q={h}"
-        driver = self.driver_pool.get()
         try:
-            joe_found, joe_link = check_hash_joesandbox(driver, h)
-        finally:
-            self.driver_pool.put(driver)
+            with self.driver_pool.emprestar() as driver:
+                joe_found, joe_link = check_hash_joesandbox(driver, h)
+        except DriverIndisponivel:
+            pass
+        vt_texto = texto_fonte(vt_score, estado_vt)
+        alien_texto = texto_fonte(alien_score, estado_alien)
+        ibm_texto = texto_fonte(ibm_score, estado_ibm)
+
+        fontes_fora = [nome for nome, estado in (
+            ("VirusTotal", estado_vt), ("AlienVault", estado_alien), ("IBM X-Force", estado_ibm)
+        ) if estado in core.ESTADOS_SEM_RESPOSTA]
+        status = "bad" if malicioso else ("incompleto" if fontes_fora else "clean")
+        if status == "incompleto":
+            reputation = t("verdict_incomplete")
+
         if include_ibm:
-            self.results_hash.append([h, vt_score, ibm_score, alien_score, name, data_fmt, vt_link, ibm_link, alien_link, joe_link])
+            self.results_hash.append([h, vt_texto, ibm_texto, alien_texto, name, data_fmt, vt_link, ibm_link, alien_link, joe_link])
         else:
-            self.results_hash.append([h, vt_score, alien_score, name, data_fmt, vt_link, alien_link, joe_link])
+            self.results_hash.append([h, vt_texto, alien_texto, name, data_fmt, vt_link, alien_link, joe_link])
         if total_hashes == 1:
             first = f"[{h}] - {reputation}"
         else:
             first = f"[{index}] {h} - {reputation}"
         if joe_found:
             first += f" - {t('joesandbox_found')}"
-        output_lines = [first, f"{t('vt_score')}: {vt_score}"]
+        output_lines = [first]
+        if fontes_fora:
+            output_lines.append(t("sources_incomplete").format(fontes=", ".join(fontes_fora)))
+        output_lines.append(f"{t('vt_score')}: {vt_texto}")
         if include_ibm:
-            output_lines.append(f"{t('ibm_score')}: {ibm_score}")
-        output_lines.append(f"{t('alien_score')}: {alien_score}")
+            output_lines.append(f"{t('ibm_score')}: {ibm_texto}")
+        output_lines.append(f"{t('alien_score')}: {alien_texto}")
         output_lines.append(f"{t('file_name')}: {name}")
         output_lines.append(f"{t('last_analysis_vt')}: {data_fmt}")
         output_lines.append(f"- {vt_link}")
@@ -959,45 +1518,52 @@ class IPCheckerApp:
             output_lines.append(f"- {ibm_link}")
         output_lines.append(f"- {alien_link}")
         if joe_found:
-            output_lines.append(f"- {joe_link}")        
-        try:
-            vt_numeric = float(vt_score)
-        except (ValueError, TypeError):
-            vt_numeric = 0
-        malicious = vt_numeric > 0 or reputation == t("reputation_bad")
-        return "\n".join(output_lines) + "\n", malicious
+            output_lines.append(f"- {joe_link}")
+        colunas = (h, t(VERDICT_KEYS[status]), coluna_fonte(vt_score, estado_vt),
+                   coluna_fonte(ibm_score, estado_ibm) if include_ibm else "-",
+                   coluna_fonte(alien_score, estado_alien), name)
+        estados = {"vt": estado_vt, "alien": estado_alien, "ibm": estado_ibm}
+        return "\n".join(output_lines) + "\n", status, colunas, estados
 
     def cancel_check(self):
         self.stop_flag = True
         self.status_label.config(text=f"❌ {t('scan_cancelled')}")
         self.scanning_ip = False
         self.check_button.config(state="normal")
+        self._update_action_buttons()
     def update_status_label(self):
+        if not self.scanning_ip:
+            return   # preserva a mensagem final de conclusao/cancelamento
+        self.progress_ip.config(maximum=max(self.total_ip, 1), value=self.feitos_ip)
+        partes = [t("progress_done").format(feitos=self.feitos_ip, total=self.total_ip)]
         if self.currently_processing:
-            inline = " | ".join(sorted(self.currently_processing))
-            status = f"{t('checking_ips')}: {inline}"
-        else:
-            status = ""
-        self.status_label.config(text=status)
+            partes.append(f"{t('checking_ips')}: {' | '.join(sorted(self.currently_processing))}")
+        self.status_label.config(text=" · ".join(partes))
+
+    def _avancar_ip(self):
+        self.feitos_ip += 1
+        self.update_status_label()
 
     def cancel_check_hash(self):
         self.stop_flag = True
         self.hash_status_label.config(text=f"❌ {t('scan_cancelled')}")
         self.scanning_hash = False
         self.hash_button_action.config(state="normal")
+        self._update_action_buttons()
     def update_status_label_hash(self):
+        if not self.scanning_hash:
+            return
+        self.progress_hash.config(maximum=max(self.total_hash, 1), value=self.feitos_hash)
+        partes = [t("progress_done").format(feitos=self.feitos_hash, total=self.total_hash)]
         if self.currently_processing_hashes:
-            inline = " | ".join(sorted(self.currently_processing_hashes))
-            status = f"{t('checking_hashes')}: {inline}"
-        else:
-            status = ""
-        self.hash_status_label.config(text=status)
+            partes.append(f"{t('checking_hashes')}: {' | '.join(sorted(self.currently_processing_hashes))}")
+        self.hash_status_label.config(text=" · ".join(partes))
 
     def copy_output(self):
-        pyperclip.copy(self.output_area.get("1.0", tk.END))
+        pyperclip.copy(self.tabela_ip.report())
 
     def copy_hash_output(self):
-        pyperclip.copy(self.hash_output_area.get("1.0", tk.END))
+        pyperclip.copy(self.tabela_hash.report())
 
     def save_results(self):
         if not self.results_ip:
@@ -1005,13 +1571,14 @@ class IPCheckerApp:
             return
         headers = [
             t("csv_ip"),t("csv_abuse_score"),t("csv_vt_score"),
-            *( [t("csv_ibm_score")] if self.ibm_var_ip.get() else [] ),
+            *( [t("csv_ibm_score")] if self.ibm_ip_ativo else [] ),
             t("csv_domain"),t("csv_country"),t("csv_city"),t("csv_last_report"),
             t("csv_abuse_link"),t("csv_vt_link"),
-            *( [t("csv_ibm_link")] if self.ibm_var_ip.get() else [] ),
+            *( [t("csv_ibm_link")] if self.ibm_ip_ativo else [] ),
         ]
 
-        save_to_csv(self.results_ip, headers, filename="ip_results.csv")
+        save_to_csv(self.results_ip, headers, filename="ip_results.xlsx",
+                    parent=self.root, titulo=t("select_folder"))
 
     def save_hash_results(self):
         if not self.results_hash:
@@ -1021,17 +1588,18 @@ class IPCheckerApp:
         headers = [
             t("csv_hash"),
             t("csv_vt_score"),
-            *( [t("csv_ibm_score")] if self.ibm_var_hash.get() else [] ),
+            *( [t("csv_ibm_score")] if self.ibm_hash_ativo else [] ),
             t("csv_alien_score"),
             t("csv_file_name"),
             t("csv_last_analysis"),
             t("csv_vt_link"),
-            *( [t("csv_ibm_link")] if self.ibm_var_hash.get() else [] ),
+            *( [t("csv_ibm_link")] if self.ibm_hash_ativo else [] ),
             t("csv_alien_link"),
             t("csv_joe_link"),
         ]   
 
-        save_to_csv(self.results_hash, headers, filename="hash_results.csv")
+        save_to_csv(self.results_hash, headers, filename="hash_results.xlsx",
+                    parent=self.root, titulo=t("select_folder"))
 
     def save_url_results(self):
         if not self.results_url:
@@ -1040,24 +1608,26 @@ class IPCheckerApp:
         from ip_checker_core import save_to_excel
         domain_headers = [
             t("csv_domain"), t("csv_vt_score"),
-            *([t("csv_ibm_score")] if self.ibm_var_url.get() else []),
+            *([t("csv_ibm_score")] if self.ibm_url_ativo else []),
             t("csv_alien_score"), t("csv_vt_link"),
-            *([t("csv_ibm_link")] if self.ibm_var_url.get() else []),
+            *([t("csv_ibm_link")] if self.ibm_url_ativo else []),
             t("csv_alien_link"),
         ]
         ip_headers = [
             t("csv_ip"), t("csv_abuse_score"), t("csv_vt_score"),
-            *([t("csv_ibm_score")] if self.ibm_var_url.get() else []),
+            *([t("csv_ibm_score")] if self.ibm_url_ativo else []),
             t("csv_domain"), t("csv_country"), t("csv_city"), t("csv_last_report"),
             t("csv_abuse_link"), t("csv_vt_link"),
-            *([t("csv_ibm_link")] if self.ibm_var_url.get() else []),
+            *([t("csv_ibm_link")] if self.ibm_url_ativo else []),
         ]
         save_to_excel(
             domain_results=self.results_url,
             domain_headers=domain_headers,
             ip_results_by_domain=self.ip_results_by_domain,
             ip_headers=ip_headers,
-            filename="domain_results.xlsx"
+            filename="domain_results.xlsx",
+            parent=self.root,
+            titulo=t("select_folder"),
         )
     def run_check(self):
         if self.scanning_ip:
@@ -1066,28 +1636,30 @@ class IPCheckerApp:
         self.stop_flag = False
         self.bad_ips = set()
         self.review_ips = set()
+        self.incompletos_ip = set()
+        self.cota_ip = set()
         self.currently_processing.clear()
-        self.update_status_label()
-        self.output_area.delete("1.0", tk.END)
-        raw_ips = self.entry.get()
-        cleaned_input = re.sub(r"[\s\n]+", ",", raw_ips)
-        ips_raw_list = [ip.strip() for ip in cleaned_input.split(",") if ip.strip()]
-        ips = []
-        for ip in ips_raw_list:
+        self.status_label.config(text="")
+        self.tabela_ip.clear()
+        ips, ignorados = [], []
+        for ip in dividir_entrada(self.entry.get_text()):
             if not is_valid_ip(ip):
-                self.output_area.insert(tk.END, f"{ip} - {t('invalid_ip')}\n")
-                continue
-            ip_obj = ipaddress.ip_address(ip)
-            if ip_obj.is_private:
-                self.output_area.insert(tk.END, f"{ip} - {t('private_ip')}\n")
-                continue
-            ips.append(ip)
+                ignorados.append(f"{ip} ({t('invalid_ip')})")
+            elif ipaddress.ip_address(ip).is_private:
+                ignorados.append(f"{ip} ({t('private_ip')})")
+            else:
+                ips.append(ip)
         if not ips:
             messagebox.showerror(t("error"), t("no_valid_public_ip"))
             return
+        self.ignorados_ip = ignorados
         self.results_ip = []
         self.scanning_ip = True
+        self.ibm_ip_ativo = self.ibm_var_ip.get()
+        self.total_ip, self.feitos_ip = len(ips), 0
         self.check_button.config(state="disabled")
+        self._update_action_buttons()
+        self.update_status_label()
         Thread(target=self._check_ips_thread, args=(ips,), daemon=True).start()
 
     def _check_ips_thread(self, ips):
@@ -1095,27 +1667,27 @@ class IPCheckerApp:
         def process_ip(index, ip):
             if self.stop_flag:
                 return None
-            self.root.after(0, lambda ip=ip: self.currently_processing.add(ip))
-            self.root.after(0, self.update_status_label)
+            self._track_processing(self.currently_processing, ip, True, self.update_status_label)
             if self.stop_flag:
                 return None
-            abuseipdb_result = check_ip_abuseipdb(ip)
+            abuseipdb_result, estado_abuse = check_ip_abuseipdb(ip)
             if self.stop_flag:
                 return None
-            virustotal_result = check_ip_virustotal(ip)
+            virustotal_result, estado_vt = check_ip_virustotal(ip)
             if self.stop_flag:
                 return None
             city, country = get_location(ip)
             domain = get_domain_from_abuseipdb(abuseipdb_result)
-            ibm_score = None
-            if self.ibm_var_ip.get() and not self.stop_flag:
-                driver = self.driver_pool.get()
+            ibm_score, estado_ibm = None, core.FONTE_OK
+            if self.ibm_ip_ativo and not self.stop_flag:
                 try:
-                    _, ibm_score = check_ip_ibm(driver, ip)
-                    if ibm_score is not None and str(ibm_score).strip().lower() == "unknown":
+                    with self.driver_pool.emprestar() as driver:
+                        _, ibm_score = check_ip_ibm(driver, ip)
+                    estado_ibm = core.classificar_ibm(ibm_score)
+                    if estado_ibm == core.FONTE_SEM_DADOS:
                         ibm_score = t("unknown")
-                finally:
-                    self.driver_pool.put(driver)
+                except DriverIndisponivel:
+                    ibm_score, estado_ibm = None, core.FONTE_INDISPONIVEL
             if self.stop_flag:
                 return None
             data = build_ip_result(
@@ -1125,24 +1697,20 @@ class IPCheckerApp:
                 ibm_score=ibm_score,
                 city=city,
                 country=country,
-                domain=domain
+                domain=domain,
+                estado_abuse=estado_abuse,
+                estado_vt=estado_vt,
+                estado_ibm=estado_ibm,
             )
             terminal_output = format_ip_output_gui(data, index=index, total=len(ips))
-            if self.ibm_var_ip.get():
-                csv_data = [
-                    ip, f"{data['abuse_score']}%", data['vt_score'], data['ibm_score'] or "",
-                    data['domain'], data['country'], data['city'], data['last_report'] or t("no_reports"),
-                    data['links']['abuse'], data['links']['vt'], data['links']['ibm'] or ""
-                ]
-            else:
-                csv_data = [
-                    ip, f"{data['abuse_score']}%", data['vt_score'],
-                    data['domain'], data['country'], data['city'], data['last_report'] or t("no_reports"),
-                    data['links']['abuse'], data['links']['vt']
-                ]
-            return (index, csv_data, terminal_output, ip, data["status"])
+            csv_data = linha_csv_ip(data, self.ibm_ip_ativo)
+            colunas = colunas_ip(data, data["country"] or "-")
+            return (index, csv_data, terminal_output, ip, data["status"], colunas, data)
         try:
-            results_buffer = []
+            # Os IPs terminam fora de ordem; so vai para a tela o trecho ja em sequencia,
+            # para a saida crescer sem redesenhar o que ja esta la.
+            pendentes = {}
+            proximo = 1
             with ThreadPoolExecutor(max_workers=min(len(ips), 10)) as executor:
                 futures = {executor.submit(process_ip, i + 1, ip): i for i, ip in enumerate(ips)}
                 for future in as_completed(futures):
@@ -1152,67 +1720,99 @@ class IPCheckerApp:
                         break
                     try:
                         result = future.result(timeout=1)
-                        if result:
-                            results_buffer.append(result)
-                            results_buffer.sort(key=lambda x: x[0])
-                            self.root.after(0, lambda: self.refresh_ip_output(results_buffer.copy()))
                     except Exception as e:
                         if not self.stop_flag:
-                            self.root.after(0, lambda e=e: self.output_area.insert(tk.END, f"Erro ao processar IP: {e}\n"))
+                            indice = futures[future]
+                            self._ui(self._linha_erro_ip, indice, ips[indice], str(e))
+                        continue
+                    if not result:
+                        continue
+                    self._track_processing(self.currently_processing, result[3], False,
+                                           self.update_status_label)
+                    self._ui(self._avancar_ip)
+                    pendentes[result[0]] = result
+                    prontos = []
+                    while proximo in pendentes:
+                        prontos.append(pendentes.pop(proximo))
+                        proximo += 1
+                    if prontos:
+                        self._ui(self.append_ip_results, prontos)
             if not self.stop_flag:
-                self.root.after(0, lambda: messagebox.showinfo(t("done"), t("scan_finished")))
+                # Sobra o que ficou preso atras de um indice que nunca chegou.
+                restantes = [pendentes[chave] for chave in sorted(pendentes)]
+                if restantes:
+                    self._ui(self.append_ip_results, restantes)
+                self._ui(self._finish_ip_scan)
         finally:
             self.scanning_ip = False
-            self.root.after(0, lambda: self.check_button.config(state="normal"))
+            self._ui(self._scan_stopped_ip)
 
-    def refresh_ip_output(self, sorted_results):
-        self.output_area.delete("1.0", tk.END)
-        self.results_ip.clear()
-        for index, csv_data, terminal_output, ip, status in sorted_results:
-            bad = status == "bad"
-            needs_review = status == "whitelisted_bad"
-            if bad:
+    def append_ip_results(self, resultados):
+        for index, csv_data, terminal_output, ip, status, colunas, data in resultados:
+            if status == "bad":
                 self.bad_ips.add(ip)
-            if needs_review:
+            elif status == "whitelisted_bad":
                 self.review_ips.add(ip)
+            elif status == "incompleto":
+                self.incompletos_ip.add(ip)
+            self._registrar_cota(self.cota_ip, data.get("estados", {}))
             self.results_ip.append(csv_data)
-            self._insert_colored(self.output_area, terminal_output, bad, needs_review)
-            self.output_area.insert(tk.END, "\n")
-            self.output_area.see(tk.END)
-            self.currently_processing.discard(ip)
-        self.update_status_label()
-        if not self.currently_processing:
-            self._append_analysis()
+            self.tabela_ip.add(f"ip-{index}", colunas, terminal_output, status)
+        self._update_action_buttons()
+
+    def _linha_erro_ip(self, indice, ip, erro):
+        self.tabela_ip.add(f"ip-erro-{indice}",
+                           (ip, t("verdict_unknown"), "-", "-", "-", "-"),
+                           f"{ip}\n{t('error_processing_ip')}: {erro}", "unknown")
+        self._avancar_ip()
+        self._update_action_buttons()
+
+    def _finish_ip_scan(self):
+        self._append_analysis()
+        self.progress_ip.config(value=self.total_ip)
+        self.status_label.config(text=f"✅ {t('scan_finished')}")
+
+    def _scan_stopped_ip(self):
+        self.check_button.config(state="normal")
+        self._update_action_buttons()
 
     def _append_analysis(self):
-        if not self.pre_var_ip.get():
-            return
         blocos = []
+        if self.cota_ip:
+            blocos.append(t("quota_warning").format(fontes=", ".join(sorted(self.cota_ip))))
+        if self.ignorados_ip:
+            blocos.append(f"{t('skipped_items')}: {', '.join(self.ignorados_ip)}")
+        if self.incompletos_ip:
+            blocos.append(t("incomplete_review").format(lista=", ".join(sorted(self.incompletos_ip))))
+        if not self.pre_var_ip.get():
+            self.tabela_ip.set_preamble("\n\n".join(blocos))
+            return
         if self.bad_ips:
             chave = "ip_bad_mss" if self.mss_var_ip.get() else "ip_bad_no_mss"
             blocos.append(_t_plural(chave, self.bad_ips))
         if self.review_ips:
             blocos.append(_t_plural("ip_whitelist_review", self.review_ips))
-        if not blocos:
+        # "Nada malicioso encontrado" so vale se todas as fontes responderam.
+        if not self.bad_ips and not self.review_ips and not self.incompletos_ip:
             blocos.append(_t_plural("ip_clean", self.results_ip))
-        self.output_area.insert("1.0", "\n\n".join(blocos) + "\n\n")
-        self.output_area.see("1.0")
+        self.tabela_ip.set_preamble("\n\n".join(blocos))
 
     def process_url_ip_associated(self, ip, domain):
         try:
-            abuseipdb_result = check_ip_abuseipdb(ip)
-            virustotal_result = check_ip_virustotal(ip)
+            abuseipdb_result, estado_abuse = check_ip_abuseipdb(ip)
+            virustotal_result, estado_vt = check_ip_virustotal(ip)
             city, country = get_location(ip)
             assoc_domain = get_domain_from_abuseipdb(abuseipdb_result)
-            ibm_score = None
-            if self.ibm_var_url.get():
-                driver = self.driver_pool.get()
+            ibm_score, estado_ibm = None, core.FONTE_OK
+            if self.ibm_url_ativo:
                 try:
-                    _, ibm_score = check_ip_ibm(driver, ip)
-                    if ibm_score is not None and str(ibm_score).strip().lower() == "unknown":
+                    with self.driver_pool.emprestar() as driver:
+                        _, ibm_score = check_ip_ibm(driver, ip)
+                    estado_ibm = core.classificar_ibm(ibm_score)
+                    if estado_ibm == core.FONTE_SEM_DADOS:
                         ibm_score = t("unknown")
-                finally:
-                    self.driver_pool.put(driver)
+                except DriverIndisponivel:
+                    ibm_score, estado_ibm = None, core.FONTE_INDISPONIVEL
             data = build_ip_result(
                 ip=ip,
                 abuseipdb_result=abuseipdb_result,
@@ -1220,25 +1820,17 @@ class IPCheckerApp:
                 ibm_score=ibm_score,
                 city=city,
                 country=country,
-                domain=assoc_domain
+                domain=assoc_domain,
+                estado_abuse=estado_abuse,
+                estado_vt=estado_vt,
+                estado_ibm=estado_ibm,
             )
-            terminal_output = format_ip_output_gui(data)
-            status = data["status"]
-            if self.ibm_var_url.get():
-                csv_data = [
-                    ip, f"{data['abuse_score']}%", data['vt_score'], data['ibm_score'] or "",
-                    data['domain'], data['country'], data['city'], data['last_report'] or t("no_reports"),
-                    data['links']['abuse'], data['links']['vt'], data['links']['ibm'] or ""
-                ]
-            else:
-                csv_data = [
-                    ip, f"{data['abuse_score']}%", data['vt_score'],
-                    data['domain'], data['country'], data['city'], data['last_report'] or t("no_reports"),
-                    data['links']['abuse'], data['links']['vt']
-                ]
-            return terminal_output, status, csv_data
+            return (format_ip_output_gui(data), data["status"],
+                    linha_csv_ip(data, self.ibm_url_ativo), colunas_ip(data, "-"),
+                    data.get("estados", {}))
         except Exception as e:
-            return f"{t('error_checking_associated_ip')} {ip}: {e}", "clean", None
+            erro = f"{t('error_checking_associated_ip')} {ip}: {e}"
+            return erro, "unknown", None, (ip, t("verdict_unknown"), "-", "-", "-", "-"), {}
 
     # helpers de resolução de domínio p/ IP
     @staticmethod
@@ -1275,16 +1867,7 @@ class IPCheckerApp:
 
     def on_close(self):
         try:
-            drivers_to_close = set(self.all_drivers)
-            while not self.driver_pool.empty():
-                drivers_to_close.add(self.driver_pool.get_nowait())
-            def _quit(d):
-                try:
-                    d.quit()
-                except Exception:
-                    pass
-            with ThreadPoolExecutor(max_workers=len(drivers_to_close) or 1) as executor:
-                executor.map(_quit, drivers_to_close)
+            self.driver_pool.encerrar()
         except Exception as e:
             print(f"Erro ao fechar drivers: {e}")
         finally:
@@ -1374,6 +1957,37 @@ def show_update_window(latest_version, novidades_texto):
                    "https://github.com/alexsilva-sh/IP-Shark/releases")).pack(side="right", padx=(0, 8))
     update_win.bind("<Escape>", lambda e: update_win.destroy())
 
+def verificar_atualizacao_em_segundo_plano(root):
+    latest, novidades = check_latest_version()
+    if not latest:
+        return
+    try:
+        root.after(0, lambda: show_update_window(latest, novidades))
+    except tk.TclError:
+        pass   # janela fechada antes de a verificacao terminar
+
+
+def configurar_estilos(style):
+    style.theme_use("clam")   # trocar de tema descarta o que ja foi configurado
+    style.configure("Nav.TButton",background="#333333",foreground="white",font=("Segoe UI",10,"bold"),padding=(12,6))
+    style.map("Nav.TButton",background=[("active","#444444")])
+    style.configure("NavActive.TButton",background="#007acc",foreground="white",font=("Segoe UI",10,"bold"),padding=(12,6))
+    style.configure("Secondary.TButton",background="#333333",foreground="white",font=("Segoe UI",10),padding=(10,5))
+    style.map("Secondary.TButton",background=[("disabled","#262626"),("active","#222222"),("pressed","#1a1a1a")],foreground=[("disabled","#6b6b6b"),("active","white")])
+    style.configure("Danger.TButton",background="#aa0000",foreground="white",font=("Segoe UI",10,"bold"),padding=(10,5))
+    style.map("Danger.TButton",background=[("disabled","#3a2222"),("active","#7a0000"),("pressed","#5c0000")],foreground=[("disabled","#8a6b6b"),("active","white")])
+    style.configure("Primary.TButton",background="#007acc",foreground="white",font=("Segoe UI",10,"bold"),padding=(12,6))
+    style.map("Primary.TButton",background=[("disabled","#2b3a45"),("active","#1e90ff"),("pressed","#0060a8")],foreground=[("disabled","#7a8b96"),("active","white")])
+    style.configure("Custom.TEntry",fieldbackground="#2a2a2a",foreground="white",padding=6)
+    style.configure("Status.TLabel",background="#1e1e1e",foreground="#00c853",font=("Segoe UI",9))
+    style.configure("Title.TLabel",background="#1e1e1e",foreground="white",font=("Segoe UI",11,"bold"))
+    style.configure("Result.Treeview",background="#0f0f0f",fieldbackground="#0f0f0f",foreground="#dddddd",font=("Consolas",10),rowheight=24,borderwidth=0)
+    style.map("Result.Treeview",background=[("selected","#0a3d5c")],foreground=[("selected","white")])
+    style.configure("Result.Treeview.Heading",background="#2a2a2a",foreground="white",font=("Segoe UI",9,"bold"),relief="flat",padding=(6,5))
+    style.map("Result.Treeview.Heading",background=[("active","#3a3a3a")])
+    style.configure("Scan.Horizontal.TProgressbar",troughcolor="#2a2a2a",bordercolor="#2a2a2a",background="#007acc",lightcolor="#007acc",darkcolor="#007acc",thickness=8)
+
+
 def update_language_buttons():
     if CURRENT_LANG == "pt":
         btn_lang_pt.config(style="NavActive.TButton")
@@ -1385,22 +1999,8 @@ def update_language_buttons():
 if __name__ == "__main__":
     root = tk.Tk()
     style = ttk.Style()
-    style.configure("Nav.TButton",background="#333333",foreground="white",font=("Segoe UI",10,"bold"),padding=(12,6))
-    style.map("Nav.TButton",background=[("active","#444444")])
-    style.configure("NavActive.TButton",background="#007acc",foreground="white",font=("Segoe UI",10,"bold"),padding=(12,6))
-    style.theme_use("clam")
-    style.configure("Nav.TButton",background="#333333",foreground="white",font=("Segoe UI",10,"bold"),padding=(12,6))
-    style.map("Nav.TButton",background=[("active","#444444")])
-    style.configure("NavActive.TButton",background="#007acc",foreground="white",font=("Segoe UI",10,"bold"),padding=(12,6))
-    style.configure("Secondary.TButton",background="#333333",foreground="white",font=("Segoe UI",10),padding=(10,5))
-    style.map("Secondary.TButton",background=[("active","#222222"),("pressed","#1a1a1a")],foreground=[("active","white")])
-    style.map("Danger.TButton",background=[("active","#7a0000"),("pressed","#5c0000")],foreground=[("active","white")])
-    style.configure("Danger.TButton",background="#aa0000",foreground="white",font=("Segoe UI",10,"bold"),padding=(10,5))
-    style.configure("Custom.TEntry",fieldbackground="#2a2a2a",foreground="white",padding=6)
-    style.configure("Status.TLabel",background="#1e1e1e",foreground="#00c853",font=("Segoe UI",9))
-    style.configure("Title.TLabel",background="#1e1e1e",foreground="white",font=("Segoe UI",11,"bold"))
-    style.configure("Primary.TButton",background="#007acc",foreground="white",font=("Segoe UI",10,"bold"),padding=(12,6))
-    style.map("Primary.TButton",background=[("active","#1e90ff"),("pressed","#0060a8")],foreground=[("active","white")])
+    configurar_estilos(style)
+    root.minsize(900, 600)
     root.state('zoomed')
     root.title(f"IP Shark {__version__} - by @alexsilva.sh in Github")
     
@@ -1429,11 +2029,12 @@ if __name__ == "__main__":
     else:
         print(f"[AVISO] Ícone não encontrado em: {icon_path}")
 
-    latest, novidades = check_latest_version()
-    if latest:
-        show_update_window(latest, novidades)
     app = IPCheckerApp(root)
     app._register_i18n(btn_config, "btn_config_api")
     update_language_buttons()
     root.protocol("WM_DELETE_WINDOW", app.on_close)
+
+    # Em segundo plano: a consulta ao GitHub segurava a janela por ate 5s numa rede lenta.
+    Thread(target=lambda: verificar_atualizacao_em_segundo_plano(root), daemon=True).start()
+
     root.mainloop()
