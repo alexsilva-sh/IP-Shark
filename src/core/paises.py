@@ -84,3 +84,13 @@ COUNTRY_NAMES_LOCAL = {
     "pt": COUNTRY_NAMES_PT,
     "en": COUNTRY_NAMES_EN
 }
+
+
+def traduzir_pais(codigo):
+    """Codigo ISO para nome completo, no idioma corrente."""
+    if not codigo or codigo == "N/A":
+        return "N/A"
+    import os
+    idioma = os.getenv("APP_LANG", "pt")
+    tabela = COUNTRY_NAMES_LOCAL.get(idioma, COUNTRY_NAMES_LOCAL["en"])
+    return tabela.get(codigo.strip().upper(), codigo)

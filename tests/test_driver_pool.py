@@ -5,8 +5,10 @@ from tkinter import ttk
 
 from _comum import bloquear_rede, check, encerrar
 
-import ip_checker_gui_dark as gui
-import ip_checker_core as core
+import app as gui
+from i18n import t
+from ui import navegadores, tema
+from core import api as core
 
 
 class DriverFake:
@@ -39,14 +41,14 @@ def fabricar(atraso=0.0, falhar_sempre=False, falhar_ate=0):
         estado["criados"].append(d)
         return d
 
-    gui.start_browser = _start
+    navegadores.start_browser = _start
     return estado
 
 
 print("\n[1] Os 3 navegadores sobem em paralelo, nao em serie")
-gui.DriverPool.ESPERA_ENTRE_TENTATIVAS = 0.01
+navegadores.DriverPool.ESPERA_ENTRE_TENTATIVAS = 0.01
 estado = fabricar(atraso=0.4)
-pool = gui.DriverPool(tamanho=3)
+pool = navegadores.DriverPool(tamanho=3)
 inicio = time.time()
 pool.iniciar_async()
 pool.boot_concluido.wait(10)
@@ -58,7 +60,7 @@ pool.encerrar()
 print("\n[2] Falha ao iniciar e reportada, nao engolida")
 avisos = []
 estado = fabricar(falhar_sempre=True)
-pool = gui.DriverPool(tamanho=3, ao_degradar=lambda v, t_, e: avisos.append((v, t_, e)))
+pool = navegadores.DriverPool(tamanho=3, ao_degradar=lambda v, t_, e: avisos.append((v, t_, e)))
 pool.iniciar_async()
 pool.boot_concluido.wait(10)
 check(pool.vivos == 0, "nenhum navegador vivo")
@@ -69,7 +71,7 @@ check(estado["chamadas"] == 9, f"3 navegadores x 3 tentativas ({estado['chamadas
 print("\n[3] Pool parcial tambem avisa")
 avisos = []
 estado = fabricar(falhar_ate=3)   # as 3 primeiras tentativas falham
-pool = gui.DriverPool(tamanho=3, ao_degradar=lambda v, t_, e: avisos.append((v, t_, e)))
+pool = navegadores.DriverPool(tamanho=3, ao_degradar=lambda v, t_, e: avisos.append((v, t_, e)))
 pool.iniciar_async()
 pool.boot_concluido.wait(10)
 check(0 < pool.vivos <= 3, f"pool subiu parcial ou completo ({pool.vivos}/3)")
@@ -81,20 +83,20 @@ pool.encerrar()
 
 print("\n[4] Sem navegador, emprestar falha rapido em vez de pendurar")
 fabricar(falhar_sempre=True)
-pool = gui.DriverPool(tamanho=2)
+pool = navegadores.DriverPool(tamanho=2)
 pool.iniciar_async()
 pool.boot_concluido.wait(10)
 inicio = time.time()
 try:
     with pool.emprestar():
         check(False, "nao deveria emprestar")
-except gui.DriverIndisponivel as e:
+except navegadores.DriverIndisponivel as e:
     check(time.time() - inicio < 1, f"falhou em {time.time() - inicio:.2f}s, sem esperar o timeout")
     check(e.vivos == 0, "excecao informa quantos estao vivos")
 
 print("\n[5] Espera do emprestimo tem teto")
 fabricar()
-pool = gui.DriverPool(tamanho=1)
+pool = navegadores.DriverPool(tamanho=1)
 pool.TIMEOUT_EMPRESTIMO = 0.3
 pool.iniciar_async()
 pool.boot_concluido.wait(10)
@@ -103,13 +105,13 @@ with pool.emprestar():           # segura o unico driver
     try:
         with pool.emprestar():
             check(False, "nao havia driver livre")
-    except gui.DriverIndisponivel:
+    except navegadores.DriverIndisponivel:
         check(0.2 < time.time() - inicio < 2, "segundo pedido estourou o timeout em vez de pendurar")
 pool.encerrar()
 
 print("\n[6] Navegador morto nao volta para a fila e e reposto")
 estado = fabricar()
-pool = gui.DriverPool(tamanho=2)
+pool = navegadores.DriverPool(tamanho=2)
 pool.iniciar_async()
 pool.boot_concluido.wait(10)
 criados_no_boot = estado["chamadas"]
@@ -129,7 +131,7 @@ pool.encerrar()
 
 print("\n[7] Navegador sadio volta para a fila")
 fabricar()
-pool = gui.DriverPool(tamanho=1)
+pool = navegadores.DriverPool(tamanho=1)
 pool.iniciar_async()
 pool.boot_concluido.wait(10)
 with pool.emprestar() as d1:
@@ -141,7 +143,7 @@ check(pool.vivos == 1, "pool nao inchou")
 
 print("\n[8] encerrar() fecha tudo")
 estado = fabricar()
-pool = gui.DriverPool(tamanho=3)
+pool = navegadores.DriverPool(tamanho=3)
 pool.iniciar_async()
 pool.boot_concluido.wait(10)
 criados = list(estado["criados"])
@@ -151,7 +153,7 @@ check(pool.vivos == 0 and pool.fila.empty(), "pool zerado")
 
 print("\n[9] Driver indisponivel vira fonte indisponivel, nao trava a varredura")
 root = tk.Tk()
-gui.configurar_estilos(ttk.Style())
+tema.configurar_estilos(ttk.Style())
 root.withdraw()
 gui.IPCheckerApp._init_drivers_async = lambda self, count=3: None
 app = gui.IPCheckerApp(root)
@@ -173,12 +175,12 @@ check(time.time() - inicio < 2, "process_hash retornou em vez de pendurar no poo
 check(not chamou_ibm, "nem tentou usar o X-Force sem driver")
 check(estados["ibm"] == core.FONTE_INDISPONIVEL, "X-Force marcado como indisponivel")
 check(status == "incompleto", "veredito e incompleto, nao limpo")
-check(gui.t("source_unavailable") in texto, "detalhe explica a falha")
+check(t("source_unavailable") in texto, "detalhe explica a falha")
 
 print("\n[10] O aviso aparece na janela")
 # winfo_ismapped e sempre 0 com a raiz withdrawn; winfo_manager diz se foi empacotado.
 check(app.banner.winfo_manager() == "", "banner nao empacotado por padrao")
-app.mostrar_aviso(gui.t("drivers_none").format(vivos=0, total=3))
+app.mostrar_aviso(t("drivers_none").format(vivos=0, total=3))
 root.update()
 check(app.banner.winfo_manager() == "pack", "banner empacotado quando ha aviso")
 check("Chrome" in app.banner_label["text"], "aviso diz o que verificar")

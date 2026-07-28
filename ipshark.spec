@@ -3,10 +3,13 @@
 
 a = Analysis(
     ['src\\ip_checker_gui_dark.py'],
-    pathex=[],
+    # src no pathex: os modulos entram como codigo, seguindo os imports. Antes iam
+    # como datas soltos, o que exigia listar cada arquivo novo aqui a mao.
+    pathex=['src'],
     binaries=[],
+    # Os locales sao lidos por caminho em tempo de execucao, entao continuam como datas.
     # Nao inclua config/api.env aqui: isso embute as chaves dentro do .exe distribuido.
-    datas=[('assets/shark.ico', 'assets'), ('src/locales/pt_BR.py', 'locales'), ('src/locales/en_US.py', 'locales'), ('src/country_codes.py', '.'), ('src/ip_checker_core.py', '.'), ('src/secure_store.py', '.')],
+    datas=[('assets/shark.ico', 'assets'), ('src/locales/pt_BR.py', 'locales'), ('src/locales/en_US.py', 'locales')],
     hiddenimports=['openpyxl', 'pyperclip', 'bs4', 'selenium', 'webdriver_manager'],
     hookspath=[],
     hooksconfig={},

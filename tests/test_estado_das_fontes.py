@@ -8,8 +8,11 @@ from tkinter import ttk
 from _comum import check, encerrar
 
 import requests
-import ip_checker_core as core
-import ip_checker_gui_dark as gui
+from core import api as core
+import app as gui
+from core import reputacao
+from i18n import t
+from ui import apresentacao, tema
 
 gui.IPCheckerApp._init_drivers_async = lambda self, count=3: None
 
@@ -78,47 +81,47 @@ ABUSE_LIMPO = {"data": {"abuseConfidenceScore": 0, "isWhitelisted": False}}
 VT_LIMPO = {"data": {"attributes": {"last_analysis_stats": {"malicious": 0}}}}
 VT_RUIM = {"data": {"attributes": {"last_analysis_stats": {"malicious": 12}}}}
 
-tudo_ok = core.build_ip_result("1.1.1.1", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "d",
+tudo_ok = reputacao.build_ip_result("1.1.1.1", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "d",
                                estado_abuse=core.FONTE_OK, estado_vt=core.FONTE_OK,
                                estado_ibm=None)
 check(tudo_ok["status"] == "clean", "todas as fontes responderam e nada achado -> clean")
 
-abuse_fora = core.build_ip_result("1.1.1.1", None, VT_LIMPO, None, "c", "p", "d",
+abuse_fora = reputacao.build_ip_result("1.1.1.1", None, VT_LIMPO, None, "c", "p", "d",
                                   estado_abuse=core.FONTE_INDISPONIVEL,
                                   estado_vt=core.FONTE_OK, estado_ibm=None)
 check(abuse_fora["status"] == "incompleto", "AbuseIPDB fora do ar -> incompleto, NAO clean")
 check(abuse_fora["abuse_score"] is None, "score da fonte ausente e None, nunca 0")
 check(abuse_fora["fontes_indisponiveis"] == ["AbuseIPDB"], "aponta qual fonte faltou")
 
-cota = core.build_ip_result("1.1.1.1", None, VT_LIMPO, None, "c", "p", "d",
+cota = reputacao.build_ip_result("1.1.1.1", None, VT_LIMPO, None, "c", "p", "d",
                             estado_abuse=core.FONTE_COTA, estado_vt=core.FONTE_OK,
                             estado_ibm=None)
 check(cota["status"] == "incompleto", "cota estourada -> incompleto")
 check(cota["cota_estourada"] is True, "sinaliza cota estourada")
 
-sem_chave = core.build_ip_result("1.1.1.1", None, None, None, "c", "p", "d",
+sem_chave = reputacao.build_ip_result("1.1.1.1", None, None, None, "c", "p", "d",
                                  estado_abuse=core.FONTE_SEM_CHAVE,
                                  estado_vt=core.FONTE_SEM_CHAVE, estado_ibm=None)
 check(sem_chave["status"] == "incompleto", "sem chave -> incompleto")
 
 print("\n[5] Deteccao de fonte que respondeu continua valendo")
-uma_fora = core.build_ip_result("1.1.1.1", None, VT_RUIM, None, "c", "p", "d",
+uma_fora = reputacao.build_ip_result("1.1.1.1", None, VT_RUIM, None, "c", "p", "d",
                                 estado_abuse=core.FONTE_INDISPONIVEL,
                                 estado_vt=core.FONTE_OK, estado_ibm=None)
 check(uma_fora["status"] == "bad", "VT detectou com AbuseIPDB fora -> bad (conclusao valida)")
 
 wl = {"data": {"abuseConfidenceScore": 0, "isWhitelisted": True}}
-check(core.build_ip_result("1.1.1.1", wl, VT_RUIM, None, "c", "p", "d")["status"] == "whitelisted_bad",
+check(reputacao.build_ip_result("1.1.1.1", wl, VT_RUIM, None, "c", "p", "d")["status"] == "whitelisted_bad",
       "whitelist + deteccao -> whitelisted_bad")
-check(core.build_ip_result("1.1.1.1", wl, VT_LIMPO, None, "c", "p", "d")["status"] == "whitelisted",
+check(reputacao.build_ip_result("1.1.1.1", wl, VT_LIMPO, None, "c", "p", "d")["status"] == "whitelisted",
       "whitelist com tudo respondendo -> whitelisted")
 
 print("\n[6] IBM: 'error' e indisponivel, 'unknown' e sem dados")
-check(core.classificar_ibm("error") == core.FONTE_INDISPONIVEL, "error -> indisponivel")
-check(core.classificar_ibm("unknown") == core.FONTE_SEM_DADOS, "unknown -> sem dados")
-check(core.classificar_ibm("1.0") == core.FONTE_OK, "score -> ok")
-check(core.classificar_ibm(None) is None, "None -> fonte nao consultada")
-ibm_fora = core.build_ip_result("1.1.1.1", ABUSE_LIMPO, VT_LIMPO, "error", "c", "p", "d",
+check(reputacao.classificar_ibm("error") == core.FONTE_INDISPONIVEL, "error -> indisponivel")
+check(reputacao.classificar_ibm("unknown") == core.FONTE_SEM_DADOS, "unknown -> sem dados")
+check(reputacao.classificar_ibm("1.0") == core.FONTE_OK, "score -> ok")
+check(reputacao.classificar_ibm(None) is None, "None -> fonte nao consultada")
+ibm_fora = reputacao.build_ip_result("1.1.1.1", ABUSE_LIMPO, VT_LIMPO, "error", "c", "p", "d",
                                 estado_ibm=core.FONTE_INDISPONIVEL)
 check(ibm_fora["status"] == "incompleto", "X-Force fora do ar -> incompleto")
 
@@ -140,18 +143,18 @@ check(dados["score"] is None and estado == core.FONTE_COTA, "429 -> score None e
 
 print("\n[9] A tela nao mostra 0% para fonte que falhou")
 root = tk.Tk()
-gui.configurar_estilos(ttk.Style())
+tema.configurar_estilos(ttk.Style())
 root.withdraw()
 app = gui.IPCheckerApp(root)
 gui.app = app
 
-texto = gui.format_ip_output_gui(abuse_fora)
-check(gui.t("source_unavailable") in texto, "detalhe diz 'falha na consulta'")
+texto = apresentacao.relatorio_ip(abuse_fora)
+check(t("source_unavailable") in texto, "detalhe diz 'falha na consulta'")
 check("0%" not in texto, "detalhe nao inventa 0%")
-check(gui.t("sources_incomplete").split("{")[0].strip() in texto, "detalhe lista as fontes que faltaram")
-check(gui.texto_fonte(0, core.FONTE_OK, "%") == "0%", "fonte que respondeu 0 mostra 0%")
-check(gui.coluna_fonte(None, core.FONTE_COTA) == "!", "celula marca a falha com !")
-check(gui.colunas_ip(abuse_fora, "BR")[1] == gui.t("verdict_incomplete"), "veredito da linha e incompleto")
+check(t("sources_incomplete").split("{")[0].strip() in texto, "detalhe lista as fontes que faltaram")
+check(apresentacao.texto_fonte(0, core.FONTE_OK, "%") == "0%", "fonte que respondeu 0 mostra 0%")
+check(apresentacao.coluna_fonte(None, core.FONTE_COTA) == "!", "celula marca a falha com !")
+check(apresentacao.colunas_ip(abuse_fora, "BR")[1] == t("verdict_incomplete"), "veredito da linha e incompleto")
 
 print("\n[10] Pre-analise nao declara 'nada encontrado' com fonte faltando")
 app.results_ip = [["1.1.1.1"]]
@@ -159,24 +162,24 @@ app.pre_var_ip.set(True)
 app.bad_ips, app.review_ips, app.ignorados_ip = set(), set(), []
 app.incompletos_ip, app.cota_ip = set(), set()
 app._append_analysis()
-check(gui.t("ip_clean_one") in app.tabela_ip.report(), "sem pendencia, declara limpo normalmente")
+check(t("ip_clean_one") in app.tabela_ip.report(), "sem pendencia, declara limpo normalmente")
 
 app.incompletos_ip = {"1.1.1.1"}
 app._append_analysis()
 relatorio = app.tabela_ip.report()
-check(gui.t("ip_clean_one") not in relatorio, "com fonte faltando, NAO declara limpo")
-check("1.1.1.1" in relatorio and gui.t("incomplete_review").split("{")[0].strip() in relatorio,
+check(t("ip_clean_one") not in relatorio, "com fonte faltando, NAO declara limpo")
+check("1.1.1.1" in relatorio and t("incomplete_review").split("{")[0].strip() in relatorio,
       "avisa quais itens ficaram incompletos")
 
 app.cota_ip = {"VirusTotal"}
 app._append_analysis()
 relatorio = app.tabela_ip.report()
-check(gui.t("quota_warning").split("{")[0].strip() in relatorio, "avisa que a cota estourou")
+check(t("quota_warning").split("{")[0].strip() in relatorio, "avisa que a cota estourou")
 check("VirusTotal" in relatorio, "diz qual API esgotou")
 
 print("\n[11] Exportacao tambem nao mente")
-linha = gui.linha_csv_ip(abuse_fora, com_ibm=False)
-check(gui.t("source_unavailable") in linha, "planilha registra a falha da fonte")
+linha = apresentacao.linha_planilha_ip(abuse_fora, com_ibm=False)
+check(t("source_unavailable") in linha, "planilha registra a falha da fonte")
 check("0%" not in linha, "planilha nao grava 0% inventado")
 
 root.destroy()
