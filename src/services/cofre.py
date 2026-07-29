@@ -11,6 +11,10 @@ import os
 import sys
 from ctypes import wintypes
 
+import log
+
+_log = log.obter("cofre")
+
 NOME_PASTA = "IPShark"
 NOME_ARQUIVO = "api_keys.dat"
 
@@ -102,8 +106,8 @@ def carregar() -> dict:
     try:
         conteudo = decifrar(bruto) if criptografia_disponivel() else bruto
         dados = json.loads(conteudo.decode("utf-8"))
-    except Exception as e:
-        print(f"[ERRO] Nao foi possivel ler as chaves de API salvas: {e}")
+    except Exception:
+        _log.exception("cofre ilegivel em %s; seguindo sem chaves", caminho)
         return {}
     if not isinstance(dados, dict):
         return {}
@@ -186,8 +190,8 @@ def migrar_se_preciso(base_dir: str) -> bool:
         return False
     try:
         salvar(valores)
-    except Exception as e:
-        print(f"[ERRO] Falha ao migrar chaves do api.env: {e}")
+    except Exception:
+        _log.exception("falha ao migrar as chaves do api.env")
         return False
-    print(f"[INFO] Chaves de API migradas de {antigo} para o cofre criptografado.")
+    _log.info("chaves migradas de %s para o cofre cifrado", antigo)
     return True

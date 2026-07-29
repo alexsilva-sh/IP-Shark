@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 import pyperclip
 import requests
 
+import log
 from core import api
 from core.api import (
     check_ip_abuseipdb,
@@ -41,6 +42,8 @@ from ui.apresentacao import (
 )
 from ui.widgets import MultilineInput, ResultTable, ToggleSwitch
 
+_log = log.obter("aba_url")
+
 
 def _ip_publico(ip):
     try:
@@ -56,7 +59,8 @@ def resolver_via_google_dns(dominio):
         resposta = requests.get(f"https://dns.google/resolve?name={dominio}&type=A", timeout=5)
         return [registro.get("data") for registro in resposta.json().get("Answer", [])
                 if _ip_publico(registro.get("data"))]
-    except Exception:
+    except Exception as e:
+        _log.debug("resolucao por DNS do Google falhou: %s", type(e).__name__)
         return []
 
 
@@ -64,7 +68,8 @@ def resolver_via_socket(dominio):
     try:
         _nome, _apelidos, ips = socket.gethostbyname_ex(dominio)
         return [ip for ip in ips if _ip_publico(ip)]
-    except Exception:
+    except Exception as e:
+        _log.debug("resolucao por socket falhou: %s", type(e).__name__)
         return []
 
 
@@ -301,6 +306,7 @@ class AbaURL:
                     linha_planilha_ip(data, self.ibm_url_ativo), colunas_ip(data, "-"),
                     data.get("estados", {}))
         except Exception as e:
+            _log.exception("falha ao consultar um IP associado ao dominio")
             erro = f"{t('error_checking_associated_ip')} {ip}: {e}"
             return erro, "unknown", None, (ip, t("verdict_unknown"), "-", "-", "-", "-"), {}
 

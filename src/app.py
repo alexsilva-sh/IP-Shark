@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import ttk
 
+import log
 from core import api
 from core.reputacao import classificar_ibm
 from i18n import t
@@ -12,6 +13,8 @@ from ui.aba_url import AbaURL
 from ui.navegadores import DriverIndisponivel, DriverPool
 
 VERSAO = "v3.1"
+
+_log = log.obter("app")
 
 
 class IPCheckerApp(AbaIP, AbaHash, AbaURL):
@@ -73,7 +76,8 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         chave = "drivers_none" if vivos == 0 else "drivers_degraded"
         self._ui(self.mostrar_aviso, t(chave).format(vivos=vivos, total=tamanho))
         if erro:
-            print(f"[AVISO] Falha ao iniciar navegador: {erro}")
+            _log.warning("pool degradado: %s de %s navegadores; ultimo erro: %s",
+                         vivos, tamanho, erro)
 
     def mostrar_aviso(self, texto):
         self.banner_label.config(text=f"⚠ {texto}")
@@ -103,7 +107,8 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
                 else:
                     widget.config(**{attr: value})
             except Exception:
-                pass
+                # Normal quando o widget ja foi destruido; suspeito quando e chave errada.
+                _log.debug("widget nao aceitou a traducao de %r", key, exc_info=True)
         for tabela in (self.tabela_ip, self.tabela_hash, self.tabela_url):
             tabela.refresh_language()
         for campo in (self.entry, self.hash_entry, self.url_entry):
@@ -164,7 +169,7 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
     def on_close(self):
         try:
             self.driver_pool.encerrar()
-        except Exception as e:
-            print(f"Erro ao fechar drivers: {e}")
+        except Exception:
+            _log.exception("falha ao encerrar o pool de navegadores")
         finally:
             self.root.destroy()

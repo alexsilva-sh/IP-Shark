@@ -5,10 +5,13 @@ import tkinter as tk
 import webbrowser
 from tkinter import messagebox, ttk
 
+import log
 from core.api import carregar_chaves_salvas, reload_api_keys, salvar_chaves
 from i18n import t
 from services import cofre
 from ui import tema
+
+_log = log.obter("config")
 
 
 def _diretorio_base():
@@ -132,6 +135,7 @@ class ConfigAPIDialog(tk.Toplevel):
         try:
             caminho = salvar_chaves(valores)
         except Exception as e:
+            _log.exception("falha ao gravar as chaves no cofre")
             messagebox.showerror(t("error"), f"{t('cfg_save_error')}: {e}", parent=self)
             return
         messagebox.showinfo(t("cfg_saved_title"), t("cfg_saved").format(caminho=caminho), parent=self)

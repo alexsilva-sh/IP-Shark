@@ -7,6 +7,7 @@ from tkinter import messagebox, ttk
 
 import pyperclip
 
+import log
 from core import api
 from core.api import check_ip_abuseipdb, check_ip_virustotal, get_location
 from core.navegador import check_ip_ibm
@@ -24,6 +25,8 @@ from ui.apresentacao import (
     relatorio_ip,
 )
 from ui.widgets import MultilineInput, ResultTable, ToggleSwitch
+
+_log = log.obter("aba_ip")
 
 
 class AbaIP:
@@ -166,6 +169,8 @@ class AbaIP:
                     except Exception as e:
                         if not self.stop_flag:
                             indice = futures[future]
+                            # O IP vai para a tela, nao para o arquivo de registro.
+                            _log.exception("falha ao consultar um IP da lista")
                             self._ui(self._linha_erro_ip, indice, ips[indice], str(e))
                         continue
                     if not result:

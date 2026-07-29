@@ -11,6 +11,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
+import log
+
+# So o tipo da excecao vai para o registro: a mensagem do Selenium costuma trazer a URL
+# consultada, e com ela o indicador do cliente.
+_log = log.obter("navegador")
+
 ESPERA_PAGINA = 18
 
 # Freio de ritmo, nao espera de pagina -- disso o WebDriverWait ja cuida. O tamanho=3 do
@@ -66,7 +72,8 @@ def check_ip_ibm(driver, ip):
                 risk_score = "low"
             else:
                 risk_score = "error"
-    except Exception:
+    except Exception as e:
+        _log.warning("X-Force de IP nao rendeu placar legivel: %s", type(e).__name__)
         risk_score = "error"
     restante = PISO_XFORCE_IP - (time.monotonic() - inicio)
     if restante > 0:
@@ -91,7 +98,8 @@ def check_hash_ibm(driver, hash_str):
             score = "low"
         else:
             score = "unknown"
-    except Exception:
+    except Exception as e:
+        _log.warning("X-Force de hash nao rendeu placar legivel: %s", type(e).__name__)
         score = "error"
     _fechar_aba(driver)
     return hash_str, score
@@ -109,7 +117,8 @@ def check_url_ibm(driver, url):
         soup = BeautifulSoup(driver.page_source, "html.parser")
         elem = soup.find("h2", class_="scorebackgroundfilter numtitle")
         return elem.text.strip() if elem else "unknown"
-    except Exception:
+    except Exception as e:
+        _log.warning("X-Force de dominio nao rendeu placar legivel: %s", type(e).__name__)
         return "error"
 
 
@@ -121,7 +130,10 @@ def check_hash_joesandbox(driver, hash_str):
         WebDriverWait(driver, ESPERA_PAGINA).until(
             EC.presence_of_element_located((By.TAG_NAME, "body")))
         found = "Full Report" in driver.page_source
-    except Exception:
-        pass
+    except Exception as e:
+        # Pagina que nao carrega vira "nada encontrado", igual ao defeito do item 15 --
+        # aqui o resultado e booleano e nao tem estado de fonte para carregar a duvida.
+        _log.warning("JoeSandbox nao carregou; resultado assumido como 'sem registro': %s",
+                     type(e).__name__)
     _fechar_aba(driver)
     return found, search_url

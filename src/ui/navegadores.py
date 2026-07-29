@@ -6,7 +6,10 @@ from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Thread
 
+import log
 from core.navegador import start_browser
+
+_log = log.obter("pool")
 
 
 class DriverIndisponivel(Exception):
@@ -51,6 +54,8 @@ class DriverPool:
                 driver = start_browser()
             except Exception as e:
                 self.ultimo_erro = str(e)
+                _log.warning("tentativa %s de %s de subir navegador falhou: %s",
+                             tentativa + 1, self.TENTATIVAS, e)
                 if tentativa < self.TENTATIVAS - 1:
                     time.sleep(self.ESPERA_ENTRE_TENTATIVAS)
                 continue
@@ -83,7 +88,8 @@ class DriverPool:
         try:
             driver.window_handles
             return True
-        except Exception:
+        except Exception as e:
+            _log.info("navegador morto sera descartado e reposto: %s", type(e).__name__)
             return False
 
     def _descartar(self, driver):
@@ -95,8 +101,9 @@ class DriverPool:
             repor = self.vivos < self.tamanho
         try:
             driver.quit()
-        except Exception:
-            pass
+        except Exception as e:
+            # Esperado: quase sempre ja esta morto, que e o motivo de estar sendo descartado.
+            _log.debug("quit() do navegador descartado falhou: %s", type(e).__name__)
         if repor:
             Thread(target=self._subir_um, daemon=True).start()
 
@@ -116,8 +123,8 @@ class DriverPool:
         def _quit(d):
             try:
                 d.quit()
-            except Exception:
-                pass
+            except Exception as e:
+                _log.debug("quit() no fechamento falhou: %s", type(e).__name__)
 
         with ThreadPoolExecutor(max_workers=len(drivers)) as executor:
             list(executor.map(_quit, drivers))
