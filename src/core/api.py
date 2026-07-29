@@ -5,6 +5,8 @@ import sys
 import threading
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from core.paises import traduzir_pais
 from services import cofre
@@ -27,6 +29,56 @@ FONTE_COTA = "cota"                  # HTTP 429
 FONTE_INDISPONIVEL = "indisponivel"  # rede, timeout, 5xx, resposta ilegivel
 
 ESTADOS_SEM_RESPOSTA = (FONTE_SEM_CHAVE, FONTE_COTA, FONTE_INDISPONIVEL)
+
+# 429 fica FORA do status_forcelist de proposito. Cota estourada nao melhora com
+# retentativa, e o urllib3 respeita o Retry-After dormindo o que a API mandar -- uma cota
+# diaria devolve horas, que congelariam a varredura inteira dentro de uma requisicao.
+# Aqui o 429 continua virando FONTE_COTA na hora, e o Retry-After so e lido para avisar.
+RECUO = Retry(total=2, backoff_factor=0.5, status_forcelist=(500, 502, 503, 504),
+              allowed_methods=("GET",), raise_on_status=False)
+
+# Uma Session por thread, nao uma compartilhada: a Session do requests nao e thread-safe
+# (o cookie jar e estado mutavel comum) e a varredura de IP roda com ate 10 workers. Por
+# thread, cada worker reaproveita a conexao TCP+TLS com as fontes ao longo de toda a lista,
+# que e de onde vem o ganho -- antes cada consulta refazia handshake do zero.
+_sessoes = threading.local()
+
+
+def _sessao():
+    sessao = getattr(_sessoes, "atual", None)
+    if sessao is None:
+        sessao = requests.Session()
+        adaptador = HTTPAdapter(max_retries=RECUO)
+        sessao.mount("https://", adaptador)
+        sessao.mount("http://", adaptador)
+        _sessoes.atual = sessao
+    return sessao
+
+
+_esperas_cota = {}
+_lock_cota = threading.Lock()
+
+
+def _registrar_espera(fonte, resposta):
+    """Guarda o Retry-After do 429 para o relatorio dizer quando vale repetir.
+
+    O cabecalho tambem admite data HTTP; nessa forma fica sem registro e o aviso sai
+    apenas sem a estimativa, que e o comportamento de antes.
+    """
+    if not fonte:
+        return
+    try:
+        segundos = int(float(resposta.headers.get("Retry-After")))
+    except (TypeError, ValueError):
+        return
+    with _lock_cota:
+        _esperas_cota[fonte] = max(0, segundos)
+
+
+def espera_de_cota(fonte):
+    """Segundos ate a cota da fonte renovar, se a API informou. None se nao informou."""
+    with _lock_cota:
+        return _esperas_cota.get(fonte)
 
 ABUSEIPDB_API_KEY = None
 VIRUSTOTAL_API_KEY = None
@@ -80,14 +132,15 @@ def safe_get(d, *keys, default=None):
     return d
 
 
-def _consultar(url, **kwargs):
+def _consultar(url, fonte=None, **kwargs):
     """GET com timeout que classifica a resposta. Devolve (json, estado)."""
     kwargs.setdefault("timeout", TIMEOUT_HTTP)
     try:
-        resposta = requests.get(url, **kwargs)
+        resposta = _sessao().get(url, **kwargs)
     except requests.exceptions.RequestException:
         return None, FONTE_INDISPONIVEL
     if resposta.status_code == 429:
+        _registrar_espera(fonte, resposta)
         return None, FONTE_COTA
     if resposta.status_code == 404:
         return None, FONTE_SEM_DADOS
@@ -105,7 +158,7 @@ def check_ip_abuseipdb(ip):
     reload_api_keys()
     if not ABUSEIPDB_API_KEY:
         return None, FONTE_SEM_CHAVE
-    return _consultar("https://api.abuseipdb.com/api/v2/check",
+    return _consultar("https://api.abuseipdb.com/api/v2/check", fonte="AbuseIPDB",
                       headers={"Accept": "application/json", "Key": ABUSEIPDB_API_KEY},
                       params={"ipAddress": ip, "maxAgeInDays": 90})
 
@@ -115,7 +168,7 @@ def check_ip_virustotal(ip):
     if not VIRUSTOTAL_API_KEY:
         return None, FONTE_SEM_CHAVE
     return _consultar(f"https://www.virustotal.com/api/v3/ip_addresses/{ip}",
-                      headers={"x-apikey": VIRUSTOTAL_API_KEY})
+                      fonte="VirusTotal", headers={"x-apikey": VIRUSTOTAL_API_KEY})
 
 
 def check_hash_virustotal(hash_str):
@@ -123,7 +176,7 @@ def check_hash_virustotal(hash_str):
     if not VIRUSTOTAL_API_KEY:
         return None, FONTE_SEM_CHAVE
     return _consultar(f"https://www.virustotal.com/api/v3/files/{hash_str}",
-                      headers={"x-apikey": VIRUSTOTAL_API_KEY})
+                      fonte="VirusTotal", headers={"x-apikey": VIRUSTOTAL_API_KEY})
 
 
 def check_url_virustotal(url):
@@ -132,6 +185,7 @@ def check_url_virustotal(url):
         return {"score": None, "not_found": False}, FONTE_SEM_CHAVE
     vt_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
     dados, estado = _consultar(f"https://www.virustotal.com/api/v3/urls/{vt_id}",
+                               fonte="VirusTotal",
                                headers={"x-apikey": VIRUSTOTAL_API_KEY,
                                         "Accept": "application/json"})
     if estado == FONTE_SEM_DADOS:
@@ -150,6 +204,7 @@ def _alienvault(tipo, indicador, link):
         return None, link, FONTE_SEM_CHAVE
     dados, estado = _consultar(
         f"https://otx.alienvault.com/api/v1/indicators/{tipo}/{indicador}/general",
+        fonte="AlienVault",
         headers={"X-OTX-API-KEY": ALIENVAULT_API_KEY, "Accept": "application/json"})
     if estado == FONTE_SEM_DADOS:
         return "0", link, FONTE_OK   # indicador ausente do OTX significa zero pulsos

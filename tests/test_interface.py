@@ -44,7 +44,9 @@ check("1 válidos" in resumo and "1 inválidos" in resumo and "1 privados" in re
 check(apresentacao.contar_ips("") == "", "entrada vazia nao mostra contador")
 check(apresentacao.contar_hashes("d41d8cd98f00b204e9800998ecf8427e xyz") == "1 válidos · 1 inválidos",
       "contador de hash separa invalidos")
-check(apresentacao.contar_dominios("a.com b.com") == "2 itens", "contador de dominios")
+check(apresentacao.contar_dominios("a.com b.com") == "2 válidos", "contador de dominios")
+check(apresentacao.contar_dominios("a.com lixo colado") == "1 válidos · 2 inválidos",
+      "contador de dominios separa invalidos, como o de IP e o de hash")
 app.entry.texto.insert("1.0", "8.8.8.8 abc")
 app.entry.refresh()
 check("inválidos" in app.entry.resumo["text"], "contador do campo atualiza ao digitar")

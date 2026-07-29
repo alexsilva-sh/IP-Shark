@@ -95,13 +95,28 @@ def _preencher(ws, headers, linhas, coluna_veredito=None):
     _formatar_planilha(ws, coluna_veredito)
 
 
+# Teto do Excel. Passar dele nao levanta erro: o openpyxl so emite um UserWarning e salva
+# um arquivo que o Excel pode se recusar a abrir -- quebra silenciosa, na mao do cliente.
+LIMITE_NOME_ABA = 31
+
+
+def _nome_aba_ips(prefixo, dominio):
+    """O corte depende do prefixo: traduzi-lo muda quanto sobra para o dominio."""
+    nome = dominio[:LIMITE_NOME_ABA - len(prefixo)]
+    for char in ["/", "\\", "*", "?", ":", "[", "]"]:
+        nome = nome.replace(char, "_")
+    return prefixo + nome
+
+
+# Os nomes de aba chegam prontos de quem chama: esta camada nao importa o i18n, mesmo
+# motivo pelo qual a cor da linha sai do simbolo do veredito e nao do texto traduzido.
 def salvar_planilha(results, headers, filename="results.xlsx", parent=None, titulo=None,
-                    coluna_veredito=None):
+                    coluna_veredito=None, aba="Resultados"):
     caminho = os.path.join(escolher_diretorio(parent, titulo or "Selecione a pasta para salvar"),
                            filename)
     wb = Workbook()
     ws = wb.active
-    ws.title = "Resultados"
+    ws.title = aba
     _preencher(ws, headers, results, coluna_veredito)
     wb.save(caminho)
     return caminho
@@ -109,17 +124,15 @@ def salvar_planilha(results, headers, filename="results.xlsx", parent=None, titu
 
 def salvar_planilha_dominios(domain_results, domain_headers, ip_results_by_domain, ip_headers,
                              filename="domain_results.xlsx", parent=None, titulo=None,
-                             coluna_veredito=None):
+                             coluna_veredito=None, aba="Dominios", prefixo_aba_ips="IPs - "):
     caminho = os.path.join(escolher_diretorio(parent, titulo or "Selecione a pasta para salvar"),
                            filename)
     wb = Workbook()
     ws = wb.active
-    ws.title = "Dominios"
+    ws.title = aba
     _preencher(ws, domain_headers, domain_results, coluna_veredito)
     for dominio, linhas in ip_results_by_domain.items():
-        nome = dominio[:25]
-        for char in ["/", "\\", "*", "?", ":", "[", "]"]:
-            nome = nome.replace(char, "_")
-        _preencher(wb.create_sheet(title=f"IPs - {nome}"), ip_headers, linhas, coluna_veredito)
+        _preencher(wb.create_sheet(title=_nome_aba_ips(prefixo_aba_ips, dominio)),
+                   ip_headers, linhas, coluna_veredito)
     wb.save(caminho)
     return caminho

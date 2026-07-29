@@ -3,7 +3,7 @@ import ipaddress
 import re
 
 from core import api
-from core.reputacao import is_valid_ip
+from core.reputacao import dominio_valido, extrair_dominio, is_valid_ip
 from i18n import t
 
 VERDICT_KEYS = {
@@ -56,6 +56,19 @@ def fontes_em_cota(estados):
             for chave, estado in (estados or {}).items() if estado == api.FONTE_COTA}
 
 
+def aviso_de_cota(fontes):
+    """Aviso de cota esgotada, com estimativa de retorno quando a API mandou Retry-After."""
+    partes = [t("quota_warning").format(fontes=", ".join(sorted(fontes)))]
+    for fonte in sorted(fontes):
+        segundos = api.espera_de_cota(fonte)
+        if not segundos:
+            continue
+        minutos = round(segundos / 60)
+        tempo = f"{round(minutos / 60)} h" if minutos >= 90 else f"{max(1, minutos)} min"
+        partes.append(t("quota_retry_after").format(fonte=fonte, tempo=tempo))
+    return " ".join(partes)
+
+
 def dividir_entrada(bruto):
     return [p for p in re.split(r"[\s,;]+", bruto or "") if p]
 
@@ -92,7 +105,13 @@ def contar_hashes(bruto):
 
 def contar_dominios(bruto):
     itens = dividir_entrada(bruto)
-    return f"{len(itens)} {t('count_items')}" if itens else ""
+    if not itens:
+        return ""
+    validos = sum(1 for item in itens if dominio_valido(extrair_dominio(item)))
+    partes = [f"{validos} {t('count_valid')}"]
+    if len(itens) - validos:
+        partes.append(f"{len(itens) - validos} {t('count_invalid')}")
+    return " · ".join(partes)
 
 
 def _cabecalho(indicador, rotulo, index, total):

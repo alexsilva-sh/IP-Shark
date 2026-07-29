@@ -4,6 +4,7 @@ Sem dependencia externa de propósito -- os testes rodam na mesma venv do build.
 """
 import os
 import sys
+from types import SimpleNamespace
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(RAIZ, "src")
@@ -30,7 +31,11 @@ def encerrar():
 
 
 def bloquear_rede(core):
-    """Faz qualquer chamada HTTP acidental estourar em vez de passar despercebida."""
+    """Faz qualquer chamada HTTP acidental estourar em vez de passar despercebida.
+
+    Precisa cobrir a Session tambem: `_consultar` nao chama mais `requests.get` direto.
+    """
     def _proibido(*_a, **_kw):
         raise AssertionError("chamada de rede dentro do teste")
     core.requests.get = _proibido
+    core._sessao = lambda: SimpleNamespace(get=_proibido)

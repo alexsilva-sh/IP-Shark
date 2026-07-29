@@ -13,6 +13,7 @@ from i18n import plural, t
 from services.exportacao import salvar_planilha
 from ui import tema
 from ui.apresentacao import (
+    aviso_de_cota,
     colunas_hash,
     contar_hashes,
     dividir_entrada,
@@ -210,7 +211,7 @@ class AbaHash:
     def _append_analysis_hash(self):
         blocos = []
         if self.cota_hash:
-            blocos.append(t("quota_warning").format(fontes=", ".join(sorted(self.cota_hash))))
+            blocos.append(aviso_de_cota(self.cota_hash))
         if self.ignorados_hash:
             blocos.append(f"{t('skipped_items')}: {', '.join(self.ignorados_hash)}")
         if self.incompletos_hash:
@@ -256,4 +257,5 @@ class AbaHash:
             t("csv_alien_link"), t("csv_joe_link"),
         ]
         salvar_planilha(self.results_hash, headers, filename="hash_results.xlsx",
-                        parent=self.root, titulo=t("select_folder"), coluna_veredito=2)
+                        parent=self.root, titulo=t("select_folder"), coluna_veredito=2,
+                        aba=t("csv_sheet_results"))

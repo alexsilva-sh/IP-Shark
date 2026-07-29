@@ -15,6 +15,7 @@ from i18n import plural, t
 from services.exportacao import salvar_planilha
 from ui import tema
 from ui.apresentacao import (
+    aviso_de_cota,
     colunas_ip,
     contar_ips,
     dividir_entrada,
@@ -260,7 +261,7 @@ class AbaIP:
     def _append_analysis(self):
         blocos = []
         if self.cota_ip:
-            blocos.append(t("quota_warning").format(fontes=", ".join(sorted(self.cota_ip))))
+            blocos.append(aviso_de_cota(self.cota_ip))
         if self.ignorados_ip:
             blocos.append(f"{t('skipped_items')}: {', '.join(self.ignorados_ip)}")
         if self.incompletos_ip:
@@ -309,4 +310,5 @@ class AbaIP:
             *([t("csv_ibm_link")] if self.ibm_ip_ativo else []),
         ]
         salvar_planilha(self.results_ip, headers, filename="ip_results.xlsx",
-                        parent=self.root, titulo=t("select_folder"), coluna_veredito=2)
+                        parent=self.root, titulo=t("select_folder"), coluna_veredito=2,
+                        aba=t("csv_sheet_results"))

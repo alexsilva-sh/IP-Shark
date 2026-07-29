@@ -8,6 +8,7 @@ import tempfile
 
 from _comum import check, encerrar
 
+import i18n
 from core import api as core
 from core import reputacao
 from i18n import t
@@ -103,6 +104,47 @@ check((aba_ips.cell(2, 1).fill.start_color.rgb or "")[-6:] == "FFD9D9",
 
 print("\n[6] O filtro do Excel cobre a coluna nova")
 check(ws.auto_filter.ref.startswith("A1"), f"auto-filtro desde A1 ({ws.auto_filter.ref})")
+
+print("\n[7] Nome das abas vem traduzido de quem chama, nao fixo em portugues")
+# Nos dois idiomas, nao so no ativo: o item existe porque o cliente que recebe a planilha
+# em ingles via as abas em portugues.
+for chave in ("csv_sheet_results", "csv_sheet_domains", "csv_sheet_ips_prefix"):
+    faltando = [lang for lang, textos in i18n._IDIOMAS.items() if chave not in textos]
+    check(not faltando, f"{chave} existe em pt e en" + (f" (falta em {faltando})" if faltando else ""))
+check(i18n._IDIOMAS["en"]["csv_sheet_domains"] != i18n._IDIOMAS["pt"]["csv_sheet_domains"],
+      "a aba de dominios realmente muda de idioma")
+
+# Importar o i18n aqui dentro ligaria "t" ou "i18n" ao modulo. E a correcao errada:
+# a exportacao nao pode saber em que idioma a planilha foi pedida.
+check(not any(hasattr(exportacao, nome) for nome in ("t", "plural", "i18n")),
+      "exportacao segue sem importar o i18n -- o nome da aba chega por parametro")
+
+caminho = exportacao.salvar_planilha(linhas, headers, filename="traduzida.xlsx",
+                                     coluna_veredito=2, aba="Results")
+check(load_workbook(caminho).sheetnames == ["Results"],
+      "aba da planilha de IP e de hash segue o parametro")
+
+caminho = exportacao.salvar_planilha_dominios(
+    domain_results=[u_linha], domain_headers=u_headers,
+    ip_results_by_domain={"exemplo.com": [apresentacao.linha_planilha_ip(malicioso, False)]},
+    ip_headers=headers, filename="dominios_traduzida.xlsx", coluna_veredito=2,
+    aba="Domains", prefixo_aba_ips="IPs - ")
+check(load_workbook(caminho).sheetnames == ["Domains", "IPs - exemplo.com"],
+      "aba de dominio e prefixo dos IPs seguem o parametro")
+
+# O prefixo entra na conta do teto de 31: um prefixo traduzido mais longo precisa
+# cortar mais do dominio, senao o Excel recusa abrir a planilha entregue.
+longo = "um-subdominio-bem-comprido.exemplo.com.br"
+caminho = exportacao.salvar_planilha_dominios(
+    domain_results=[u_linha], domain_headers=u_headers,
+    ip_results_by_domain={longo: [apresentacao.linha_planilha_ip(malicioso, False)],
+                          "outro.com:8080": [apresentacao.linha_planilha_ip(limpo, False)]},
+    ip_headers=headers, filename="abas_longas.xlsx", coluna_veredito=2,
+    prefixo_aba_ips="Planilha de IPs - ")
+abas = load_workbook(caminho).sheetnames
+check(max(len(n) for n in abas) <= exportacao.LIMITE_NOME_ABA,
+      f"prefixo longo ainda cabe no teto do Excel ({max(abas, key=len)!r})")
+check(all(":" not in n for n in abas), "caractere proibido no nome de aba continua trocado")
 
 shutil.rmtree(saida, ignore_errors=True)
 check(not os.path.exists(saida), "pasta temporaria removida")

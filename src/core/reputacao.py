@@ -1,8 +1,10 @@
 """Regras que transformam as respostas das fontes em veredito."""
 import base64
 import ipaddress
+import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from core.api import (
     ESTADOS_SEM_RESPOSTA,
@@ -20,6 +22,32 @@ def is_valid_ip(ip):
         return True
     except ValueError:
         return False
+
+
+# Rotulos de 1 a 63 caracteres sem hifen nas pontas, nome inteiro ate 253, e TLD
+# alfabetico (ou punycode). O TLD alfabetico e o que descarta "1.2.3.4": IP tem aba propria.
+_DOMINIO = re.compile(
+    r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"(?:xn--[a-z0-9-]{2,59}|[a-z]{2,63})$", re.IGNORECASE)
+
+
+def extrair_dominio(bruto):
+    """Descarta esquema, porta e caminho do que o analista colou."""
+    alvo = bruto if re.match(r"^\w+://", bruto) else "http://" + bruto
+    try:
+        endereco = urlparse(alvo)
+        return (endereco.netloc or endereco.path).split(":")[0] or bruto
+    except ValueError:
+        return bruto
+
+
+def dominio_valido(dominio):
+    """O equivalente de is_valid_ip para a aba de dominio.
+
+    Sem isto, lixo colado queima uma vaga do pool de Chrome e cota de API numa consulta
+    que ja se sabe que vai falhar.
+    """
+    return bool(_DOMINIO.fullmatch(dominio or ""))
 
 
 def remover_acentos(texto):

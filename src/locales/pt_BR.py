@@ -75,6 +75,8 @@ STRINGS = {
 
     # URL / Domínio
     "no_domain": "Nenhum domínio informado.",
+    "invalid_domain": "domínio inválido",
+    "no_valid_domain": "Nenhum domínio válido informado.",
     "domain_scan_finished": "Consulta de domínio finalizada.",
     "domain_ips_one": "IP associado ao domínio",
     "domain_ips_many": "IPs associados ao domínio",
@@ -285,6 +287,7 @@ STRINGS = {
         "Os itens marcados como incompletos NÃO foram verificados nessas bases — "
         "repita a consulta depois que a cota renovar."
     ),
+    "quota_retry_after": "{fonte}: a API pediu para repetir em ~{tempo}.",
     "incomplete_review": (
         "Os itens a seguir não puderam ser verificados em todas as bases: {lista}\n"
         "A ausência de detecção aqui não significa que o indicador é limpo. "
@@ -294,12 +297,12 @@ STRINGS = {
     "count_valid": "válidos",
     "count_invalid": "inválidos",
     "count_private": "privados",
-    "count_items": "itens",
     "skipped_items": "Ignorados",
     "progress_done": "{feitos}/{total}",
     "associated_to_domain": "associado ao domínio",
 
     "toggle_check_ips": "Consultar IPs associados",
+    "csv_sheet_results": "Resultados",
     "csv_sheet_domains": "Domínios",
     "csv_sheet_ips_prefix": "IPs - ",
     

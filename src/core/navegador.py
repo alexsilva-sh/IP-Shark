@@ -1,5 +1,6 @@
 """Consultas que dependem de navegador: IBM X-Force e JoeSandbox."""
 import subprocess
+import time
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -9,6 +10,13 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
+
+ESPERA_PAGINA = 18
+
+# Freio de ritmo, nao espera de pagina -- disso o WebDriverWait ja cuida. O tamanho=3 do
+# DriverPool foi calibrado para nao disparar o bloqueio do X-Force quando cada consulta
+# prendia o driver por 8 s; medir a taxa de bloqueio antes de baixar este piso.
+PISO_XFORCE_IP = 2.0
 
 
 def start_browser():
@@ -33,33 +41,36 @@ def _fechar_aba(driver):
 
 
 def check_ip_ibm(driver, ip):
+    """Placar do X-Force para um IP.
+
+    Leitura que falha devolve "error", nunca "unknown": "unknown" vira FONTE_SEM_DADOS,
+    que nao entra em fontes_indisponiveis e deixaria a pagina lenta sair como IP limpo.
+    """
+    inicio = time.monotonic()
     _abrir_aba(driver, f"https://exchange.xforce.ibmcloud.com/ip/{ip}")
     try:
-        import time
-        time.sleep(8)
+        WebDriverWait(driver, ESPERA_PAGINA).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "h1.risklevelbar")))
         soup = BeautifulSoup(driver.page_source, "html.parser")
         h1 = soup.find("h1", class_="risklevelbar")
-        if h1:
-            score_span = h1.find("span", class_="numtitle")
-            if score_span:
-                try:
-                    risk_score = float(score_span.text.strip())
-                except ValueError:
-                    risk_score = "unknown"
-            else:
-                risk_class = h1.get("class", [])
-                if "high" in risk_class:
-                    risk_score = "high"
-                elif "medium" in risk_class:
-                    risk_score = "medium"
-                elif "low" in risk_class:
-                    risk_score = "low"
-                else:
-                    risk_score = "unknown"
+        score_span = h1.find("span", class_="numtitle") if h1 else None
+        if score_span:
+            risk_score = float(score_span.text.strip())
         else:
-            risk_score = "unknown"
+            risk_class = h1.get("class", []) if h1 else []
+            if "high" in risk_class:
+                risk_score = "high"
+            elif "medium" in risk_class:
+                risk_score = "medium"
+            elif "low" in risk_class:
+                risk_score = "low"
+            else:
+                risk_score = "error"
     except Exception:
         risk_score = "error"
+    restante = PISO_XFORCE_IP - (time.monotonic() - inicio)
+    if restante > 0:
+        time.sleep(restante)
     _fechar_aba(driver)
     return ip, risk_score
 
@@ -67,7 +78,7 @@ def check_ip_ibm(driver, ip):
 def check_hash_ibm(driver, hash_str):
     _abrir_aba(driver, f"https://exchange.xforce.ibmcloud.com/malware/{hash_str}")
     try:
-        WebDriverWait(driver, 18).until(
+        WebDriverWait(driver, ESPERA_PAGINA).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".risklevelbar")))
         soup = BeautifulSoup(driver.page_source, "html.parser")
         risk_element = soup.find(class_="risklevelbar")
@@ -92,7 +103,7 @@ def check_url_ibm(driver, url):
         _fechar_aba(driver)
     driver.get(ibm_url)
     try:
-        WebDriverWait(driver, 18).until(
+        WebDriverWait(driver, ESPERA_PAGINA).until(
             EC.presence_of_element_located(
                 (By.CSS_SELECTOR, "h2.scorebackgroundfilter.numtitle")))
         soup = BeautifulSoup(driver.page_source, "html.parser")
@@ -107,7 +118,7 @@ def check_hash_joesandbox(driver, hash_str):
     _abrir_aba(driver, search_url)
     found = False
     try:
-        WebDriverWait(driver, 18).until(
+        WebDriverWait(driver, ESPERA_PAGINA).until(
             EC.presence_of_element_located((By.TAG_NAME, "body")))
         found = "Full Report" in driver.page_source
     except Exception:

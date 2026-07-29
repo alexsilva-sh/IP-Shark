@@ -72,6 +72,8 @@ STRINGS = {
 
     # URL / Domain
     "no_domain": "No domain provided.",
+    "invalid_domain": "invalid domain",
+    "no_valid_domain": "No valid domain provided.",
     "domain_scan_finished": "Domain scan finished.",
     "domain_ips_one": "Associated IP for the domain",
     "domain_ips_many": "Associated IPs for the domain",
@@ -281,6 +283,7 @@ STRINGS = {
         "Items flagged as incomplete were NOT checked against those sources - "
         "run the query again once the quota resets."
     ),
+    "quota_retry_after": "{fonte}: the API asked to retry in ~{tempo}.",
     "incomplete_review": (
         "The following items could not be checked against every source: {lista}\n"
         "The absence of a detection here does not mean the indicator is clean. "
@@ -290,12 +293,12 @@ STRINGS = {
     "count_valid": "valid",
     "count_invalid": "invalid",
     "count_private": "private",
-    "count_items": "items",
     "skipped_items": "Skipped",
     "progress_done": "{feitos}/{total}",
     "associated_to_domain": "associated with domain",
 
     "toggle_check_ips":"Check associated IPs",
+    "csv_sheet_results": "Results",
     "csv_sheet_domains": "Domains",
     "csv_sheet_ips_prefix": "IPs - ",
     

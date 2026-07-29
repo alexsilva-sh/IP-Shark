@@ -1,11 +1,9 @@
 """Aba de dominios: montagem da tela, varredura, IPs resolvidos e exportacao."""
 import ipaddress
-import re
 import socket
 import tkinter as tk
 from threading import Thread
 from tkinter import messagebox, ttk
-from urllib.parse import urlparse
 
 import pyperclip
 import requests
@@ -19,11 +17,18 @@ from core.api import (
     get_location,
 )
 from core.navegador import check_ip_ibm, check_url_ibm
-from core.reputacao import build_ip_result, build_url_result, get_domain_from_abuseipdb
+from core.reputacao import (
+    build_ip_result,
+    build_url_result,
+    dominio_valido,
+    extrair_dominio,
+    get_domain_from_abuseipdb,
+)
 from i18n import plural, t
 from services.exportacao import salvar_planilha_dominios
 from ui import tema
 from ui.apresentacao import (
+    aviso_de_cota,
     colunas_ip,
     colunas_url,
     contar_dominios,
@@ -35,16 +40,6 @@ from ui.apresentacao import (
     relatorio_url,
 )
 from ui.widgets import MultilineInput, ResultTable, ToggleSwitch
-
-
-def extrair_dominio(bruto):
-    """Descarta esquema, porta e caminho do que o analista colou."""
-    alvo = bruto if re.match(r"^\w+://", bruto) else "http://" + bruto
-    try:
-        endereco = urlparse(alvo)
-        return (endereco.netloc or endereco.path).split(":")[0] or bruto
-    except Exception:
-        return bruto
 
 
 def _ip_publico(ip):
@@ -87,6 +82,7 @@ class AbaURL:
         self.review_urls = set()
         self.incompletos_url = set()
         self.cota_url = set()
+        self.ignorados_url = []
         self.ip_results_by_domain = {}
         self.total_url = self.feitos_url = 0
 
@@ -179,10 +175,22 @@ class AbaURL:
         self.cota_url = set()
         self.ip_results_by_domain = {}
         self.tabela_url.clear()
-        url_list = dividir_entrada(self.url_entry.get_text())
-        if not url_list:
+        bruto_list = dividir_entrada(self.url_entry.get_text())
+        if not bruto_list:
             messagebox.showerror(t("error"), t("no_domain"))
             return
+        # Normaliza e valida antes de gastar vaga do pool de Chrome e cota de API.
+        url_list, ignorados = [], []
+        for bruto in bruto_list:
+            dominio = extrair_dominio(bruto)
+            if dominio_valido(dominio):
+                url_list.append(dominio)
+            else:
+                ignorados.append(f"{bruto} ({t('invalid_domain')})")
+        if not url_list:
+            messagebox.showerror(t("error"), t("no_valid_domain"))
+            return
+        self.ignorados_url = ignorados
         self.stop_flag = False
         self.currently_processing_urls.clear()
         self.url_status_label.config(text="")
@@ -197,10 +205,9 @@ class AbaURL:
 
     def _check_urls_thread(self, url_list):
         try:
-            for i, bruto in enumerate(url_list):
+            for i, url in enumerate(url_list):
                 if self.stop_flag:
                     break
-                url = extrair_dominio(bruto)
                 self._track_processing(self.currently_processing_urls, url, True,
                                        self.update_status_label_url)
                 data = self._consultar_dominio(url)
@@ -319,7 +326,9 @@ class AbaURL:
     def _append_analysis_url(self):
         blocos = []
         if self.cota_url:
-            blocos.append(t("quota_warning").format(fontes=", ".join(sorted(self.cota_url))))
+            blocos.append(aviso_de_cota(self.cota_url))
+        if self.ignorados_url:
+            blocos.append(f"{t('skipped_items')}: {', '.join(self.ignorados_url)}")
         if self.incompletos_url:
             blocos.append(t("incomplete_review").format(
                 lista=", ".join(sorted(self.incompletos_url))))
@@ -382,4 +391,6 @@ class AbaURL:
             parent=self.root,
             titulo=t("select_folder"),
             coluna_veredito=2,
+            aba=t("csv_sheet_domains"),
+            prefixo_aba_ips=t("csv_sheet_ips_prefix"),
         )
