@@ -125,6 +125,45 @@ ibm_fora = reputacao.build_ip_result("1.1.1.1", ABUSE_LIMPO, VT_LIMPO, "error", 
                                 estado_ibm=core.FONTE_INDISPONIVEL)
 check(ibm_fora["status"] == "incompleto", "X-Force fora do ar -> incompleto")
 
+print("\n[6b] Hash e dominio seguem a mesma regra, no mesmo lugar")
+VT_HASH_LIMPO = {"data": {"attributes": {"last_analysis_stats": {"malicious": 0},
+                                         "meaningful_name": "nota.txt",
+                                         "last_analysis_date": 1700000000}}}
+VT_HASH_RUIM = {"data": {"attributes": {"last_analysis_stats": {"malicious": 7}}}}
+
+h_limpo = reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", "0")
+check(h_limpo["status"] == "clean", "hash com todas as fontes respondendo e nada achado -> clean")
+check(h_limpo["nome_arquivo"] == "nota.txt", "nome do arquivo vem do VirusTotal")
+check(reputacao.build_hash_result("a" * 32, VT_HASH_RUIM, "-", "0")["status"] == "bad",
+      "hash detectado pelo VirusTotal -> bad")
+check(reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "high", "0",
+                                  estado_ibm=core.FONTE_OK)["status"] == "bad",
+      "X-Force 'high' basta para bad")
+check(reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", "4")["status"] == "bad",
+      "pulso no AlienVault basta para bad")
+h_vt_fora = reputacao.build_hash_result("a" * 32, None, "-", "0",
+                                        estado_vt=core.FONTE_INDISPONIVEL)
+check(h_vt_fora["status"] == "incompleto", "VirusTotal fora do ar -> incompleto, NAO clean")
+check(h_vt_fora["vt_score"] is None, "score de hash sem resposta e None, nunca 0")
+h_sem_registro = reputacao.build_hash_result("a" * 32, {}, "-", "0")
+check(h_sem_registro["status"] == "clean" and h_sem_registro["estados"]["vt"] == core.FONTE_SEM_DADOS,
+      "200 sem atributos -> sem dados, e ninguem acusou nada")
+
+u_limpo = reputacao.build_url_result("exemplo.com", 0, "-", "0")
+check(u_limpo["status"] == "clean", "dominio com tudo respondendo e nada achado -> clean")
+check(reputacao.build_url_result("exemplo.com", 3, "-", "0")["status"] == "bad",
+      "dominio detectado pelo VirusTotal -> bad")
+check(reputacao.build_url_result("exemplo.com", 0, "8.6", "0",
+                                 estado_ibm=core.FONTE_OK)["status"] == "bad",
+      "nota do X-Force >= 2 -> bad")
+check(reputacao.build_url_result("exemplo.com", 0, "1.0", "0",
+                                 estado_ibm=core.FONTE_OK)["status"] == "clean",
+      "nota do X-Force baixa nao acusa sozinha")
+u_fora = reputacao.build_url_result("exemplo.com", None, "-", None,
+                                    estado_vt=core.FONTE_COTA, estado_alien=core.FONTE_COTA)
+check(u_fora["status"] == "incompleto", "dominio com cota estourada -> incompleto, NAO clean")
+check(u_fora["fontes_indisponiveis"] == ["VirusTotal", "AlienVault"], "aponta quais fontes faltaram")
+
 print("\n[7] AlienVault: 404 e zero pulsos, nao indisponibilidade")
 mockar(RespostaFake(404))
 _score, _link, estado = core.check_hash_alienvault("a" * 32)
@@ -181,6 +220,25 @@ print("\n[11] Exportacao tambem nao mente")
 linha = apresentacao.linha_planilha_ip(abuse_fora, com_ibm=False)
 check(t("source_unavailable") in linha, "planilha registra a falha da fonte")
 check("0%" not in linha, "planilha nao grava 0% inventado")
+linha_hash = apresentacao.linha_planilha_hash(h_vt_fora, com_ibm=False)
+check(t("source_unavailable") in linha_hash, "planilha de hash registra a falha da fonte")
+check(len(linha_hash) == len(apresentacao.linha_planilha_hash(h_vt_fora, com_ibm=True)) - 2,
+      "coluna e link do X-Force somem juntos quando a fonte esta desligada")
+linha_url = apresentacao.linha_planilha_url(u_fora, com_ibm=False)
+check(t("source_quota") in linha_url, "planilha de dominio registra a cota estourada")
+check("0" not in linha_url[1], "planilha de dominio nao grava 0 inventado")
+
+print("\n[12] A tela de hash e dominio tambem nao mente")
+texto_hash = apresentacao.relatorio_hash(h_vt_fora, com_ibm=False)
+check(t("source_unavailable") in texto_hash, "detalhe do hash diz 'falha na consulta'")
+check(apresentacao.colunas_hash(h_vt_fora, com_ibm=False)[1] == t("verdict_incomplete"),
+      "veredito da linha de hash e incompleto")
+check(apresentacao.colunas_hash(h_limpo, com_ibm=False)[5] == "nota.txt",
+      "coluna de arquivo traz o nome do VirusTotal")
+check(apresentacao.colunas_hash(h_vt_fora, com_ibm=False)[5] == "-",
+      "sem resposta do VirusTotal, a coluna de arquivo fica vazia")
+check(apresentacao.colunas_url(u_fora, com_ibm=False)[1] == t("verdict_incomplete"),
+      "veredito da linha de dominio e incompleto")
 
 root.destroy()
 encerrar()

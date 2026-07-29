@@ -154,13 +154,13 @@ print("\n[14] Exportacao nao cria uma segunda raiz Tk")
 import threading
 
 from services import exportacao
-from ui import janela_atualizacao
+from ui import aba_ip, janela_atualizacao
 
 pedidos = []
 exportacao.filedialog.askdirectory = lambda **kw: pedidos.append(kw) or "C:\\saida"
 app.results_ip = [["1.1.1.1", "0%", 0]]
 app.ibm_ip_ativo = False
-gui.salvar_planilha = lambda *a, **kw: exportacao.escolher_diretorio(kw.get("parent"), kw.get("titulo"))
+aba_ip.salvar_planilha = lambda *a, **kw: exportacao.escolher_diretorio(kw.get("parent"), kw.get("titulo"))
 app.save_results()
 check(len(pedidos) == 1, "o dialogo de pasta abriu")
 check(pedidos[0].get("parent") is root, "dialogo usa a janela existente como dona")

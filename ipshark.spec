@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+import sys
 
 a = Analysis(
     ['src\\ip_checker_gui_dark.py'],
@@ -18,6 +18,18 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+# O hook do Selenium recolhe o selenium-manager das tres plataformas. Num build Windows
+# os de Linux e macOS sao 12,9 MB que o _get_binary() do Selenium nunca vai escolher --
+# ele resolve por sys.platform. O de Windows entra como BINARY, nao como DATA, entao
+# nao ha risco de este filtro derrubar o unico que importa.
+if sys.platform == 'win32':
+    _outras = ('/linux/', '/macos/')
+    _antes = len(a.datas)
+    a.datas = [entrada for entrada in a.datas
+               if 'selenium-manager' not in entrada[0]
+               or not any(p in entrada[0].replace('\\', '/') for p in _outras)]
+    print(f'[spec] selenium-manager de outras plataformas removido: {_antes - len(a.datas)} arquivo(s)')
+
 pyz = PYZ(a.pure)
 
 exe = EXE(

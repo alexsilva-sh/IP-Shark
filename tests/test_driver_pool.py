@@ -7,7 +7,7 @@ from _comum import bloquear_rede, check, encerrar
 
 import app as gui
 from i18n import t
-from ui import navegadores, tema
+from ui import aba_hash, navegadores, tema
 from core import api as core
 
 
@@ -163,10 +163,10 @@ app.driver_pool.boot_concluido.set()      # boot terminou sem nenhum driver
 app.ibm_hash_ativo = True
 app.results_hash = []
 chamou_ibm = []
-gui.check_hash_ibm = lambda d, h: chamou_ibm.append(h)
-gui.check_hash_alienvault = lambda h: ("0", "link", core.FONTE_OK)
-gui.check_hash_virustotal = lambda h: (None, core.FONTE_INDISPONIVEL)
-gui.check_hash_joesandbox = lambda d, h: (False, "link")
+aba_hash.check_hash_ibm = lambda d, h: chamou_ibm.append(h)
+aba_hash.check_hash_alienvault = lambda h: ("0", "link", core.FONTE_OK)
+aba_hash.check_hash_virustotal = lambda h: (None, core.FONTE_INDISPONIVEL)
+aba_hash.check_hash_joesandbox = lambda d, h: (False, "link")
 bloquear_rede(core)   # se algum mock vazar, a chamada real estoura aqui
 
 inicio = time.time()

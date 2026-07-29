@@ -95,6 +95,10 @@ def contar_dominios(bruto):
     return f"{len(itens)} {t('count_items')}" if itens else ""
 
 
+def _cabecalho(indicador, rotulo, index, total):
+    return f"[{indicador}] - {rotulo}" if total == 1 else f"[{index}] {indicador} - {rotulo}"
+
+
 def relatorio_ip(data, index=None, total=1):
     rotulos = {
         "clean": t("reputation_clean"),
@@ -103,10 +107,8 @@ def relatorio_ip(data, index=None, total=1):
         "whitelisted_bad": t("reputation_whitelisted_bad"),
         "incompleto": t("verdict_incomplete"),
     }
-    cabecalho = (f"[{data['ip']}] - {rotulos[data['status']]}" if total == 1
-                 else f"[{index}] {data['ip']} - {rotulos[data['status']]}")
     estados = data.get("estados", {})
-    linhas = [cabecalho]
+    linhas = [_cabecalho(data["ip"], rotulos[data["status"]], index, total)]
     if data.get("fontes_indisponiveis"):
         linhas.append(t("sources_incomplete").format(fontes=", ".join(data["fontes_indisponiveis"])))
     linhas.append(f"{t('abuseipdb_score')}: {texto_fonte(data['abuse_score'], estados.get('abuse'), '%')}")
@@ -125,7 +127,7 @@ def relatorio_ip(data, index=None, total=1):
 
 def linha_planilha_ip(data, com_ibm):
     estados = data.get("estados", {})
-    linha = [data["ip"],
+    linha = [data["ip"], t(VERDICT_KEYS[data["status"]]),
              texto_fonte(data["abuse_score"], estados.get("abuse"), "%"),
              texto_fonte(data["vt_score"], estados.get("vt"))]
     if com_ibm:
@@ -145,3 +147,99 @@ def colunas_ip(data, ultima):
             coluna_fonte(data["vt_score"], estados.get("vt")),
             coluna_fonte(data["ibm_score"] or "-", estados.get("ibm")),
             ultima)
+
+
+def nome_do_arquivo(data):
+    """Nome que o VirusTotal deu ao arquivo; '-' quando ele nem conhece o hash."""
+    if data["nome_arquivo"]:
+        return data["nome_arquivo"]
+    return t("unknown") if data["estados"].get("vt") == api.FONTE_OK else "-"
+
+
+def relatorio_hash(data, com_ibm=True, index=None, total=1):
+    estados = data["estados"]
+    rotulo = {"bad": t("reputation_bad"), "incompleto": t("verdict_incomplete")}.get(
+        data["status"], t("reputation_clean") if data["vt_score"] is not None else t("no_records"))
+    cabecalho = _cabecalho(data["hash"], rotulo, index, total)
+    if data["joe_found"]:
+        cabecalho += f" - {t('joesandbox_found')}"
+
+    linhas = [cabecalho]
+    if data["fontes_indisponiveis"]:
+        linhas.append(t("sources_incomplete").format(fontes=", ".join(data["fontes_indisponiveis"])))
+    linhas.append(f"{t('vt_score')}: {texto_fonte(data['vt_score'], estados.get('vt'))}")
+    if com_ibm:
+        linhas.append(f"{t('ibm_score')}: {texto_fonte(data['ibm_score'], estados.get('ibm'))}")
+    linhas.append(f"{t('alien_score')}: {texto_fonte(data['alien_score'], estados.get('alien'))}")
+    linhas.append(f"{t('file_name')}: {nome_do_arquivo(data)}")
+    linhas.append(f"{t('last_analysis_vt')}: {data['ultima_analise'] or 'N/A'}")
+    linhas.append(f"- {data['links']['vt']}")
+    if com_ibm:
+        linhas.append(f"- {data['links']['ibm']}")
+    linhas.append(f"- {data['links']['alien']}")
+    if data["joe_found"]:
+        linhas.append(f"- {data['links']['joe']}")
+    return "\n".join(linhas) + "\n"
+
+
+def linha_planilha_hash(data, com_ibm):
+    estados = data["estados"]
+    linha = [data["hash"], t(VERDICT_KEYS[data["status"]]),
+             texto_fonte(data["vt_score"], estados.get("vt"))]
+    if com_ibm:
+        linha.append(texto_fonte(data["ibm_score"], estados.get("ibm")))
+    linha += [texto_fonte(data["alien_score"], estados.get("alien")),
+              nome_do_arquivo(data), data["ultima_analise"] or "N/A", data["links"]["vt"]]
+    if com_ibm:
+        linha.append(data["links"]["ibm"])
+    linha += [data["links"]["alien"], data["links"]["joe"]]
+    return linha
+
+
+def colunas_hash(data, com_ibm):
+    estados = data["estados"]
+    return (data["hash"], t(VERDICT_KEYS[data["status"]]),
+            coluna_fonte(data["vt_score"], estados.get("vt")),
+            coluna_fonte(data["ibm_score"], estados.get("ibm")) if com_ibm else "-",
+            coluna_fonte(data["alien_score"], estados.get("alien")),
+            nome_do_arquivo(data))
+
+
+def relatorio_url(data, com_ibm=True, index=None, total=1):
+    estados = data["estados"]
+    rotulo = {"bad": t("reputation_bad"), "incompleto": t("verdict_incomplete")}.get(
+        data["status"], t("reputation_clean"))
+
+    linhas = [_cabecalho(data["url"], rotulo, index, total)]
+    if data["fontes_indisponiveis"]:
+        linhas.append(t("sources_incomplete").format(fontes=", ".join(data["fontes_indisponiveis"])))
+    linhas.append(f"{t('vt_score')}: {texto_fonte(data['vt_score'], estados.get('vt'))}")
+    if com_ibm:
+        linhas.append(f"{t('ibm_score')}: {texto_fonte(data['ibm_score'], estados.get('ibm'))}")
+    linhas.append(f"{t('alien_score')}: {texto_fonte(data['alien_score'], estados.get('alien'))}")
+    linhas.append(f"- {data['links']['vt']}")
+    if com_ibm:
+        linhas.append(f"- {data['links']['ibm']}")
+    linhas.append(f"- {data['links']['alien']}")
+    return "\n".join(linhas)
+
+
+def linha_planilha_url(data, com_ibm):
+    estados = data["estados"]
+    linha = [data["url"], t(VERDICT_KEYS[data["status"]]),
+             texto_fonte(data["vt_score"], estados.get("vt"))]
+    if com_ibm:
+        linha.append(texto_fonte(data["ibm_score"], estados.get("ibm")))
+    linha += [texto_fonte(data["alien_score"], estados.get("alien")), data["links"]["vt"]]
+    if com_ibm:
+        linha.append(data["links"]["ibm"])
+    linha.append(data["links"]["alien"])
+    return linha
+
+
+def colunas_url(data, com_ibm):
+    estados = data["estados"]
+    return (data["url"], t(VERDICT_KEYS[data["status"]]), "-",
+            coluna_fonte(data["vt_score"], estados.get("vt")),
+            coluna_fonte(data["ibm_score"], estados.get("ibm")) if com_ibm else "-",
+            coluna_fonte(data["alien_score"], estados.get("alien")))

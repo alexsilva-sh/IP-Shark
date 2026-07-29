@@ -229,6 +229,7 @@ STRINGS = {
     "csv_ip": "IP",
     "csv_hash": "Hash",
     "csv_domain": "Domain",
+    "csv_verdict": "Verdict",
     "csv_abuse_score": "AbuseIPDB score",
     "csv_vt_score": "VirusTotal score",
     "csv_ibm_score": "IBM score",
