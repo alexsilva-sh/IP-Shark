@@ -194,5 +194,149 @@ check("tkinter" not in str(core.reputacao.__dict__.get("__builtins__", "")), "nu
 check(hasattr(ui.widgets, "ResultTable") and not hasattr(ui.widgets, "build_ip_result"),
       "widgets nao carregam regra de negocio")
 
+print("\n[17] Indicador fixo de cota no rodape")
+gui.api.cotas_restantes = lambda: {}
+app.atualizar_rodape_cota(reagendar=False)
+check(app.rodape_cota["text"] == "",
+      "sem dado de cota o rodape fica vazio -- vazio nao pode parecer cota zerada")
+gui.api.cotas_restantes = lambda: {"AbuseIPDB": 873, "AlienVault": 40}
+app.atualizar_rodape_cota(reagendar=False)
+texto = app.rodape_cota["text"]
+check("AbuseIPDB: 873" in texto and "AlienVault: 40" in texto, f"rodape lista as fontes ({texto})")
+check(t("quota_footer") in texto, "rotulo traduzido no rodape")
+check(app.rodape_cota["fg"] == tema.TEXTO_SECUNDARIO, "cota folgada em cinza discreto")
+gui.api.cotas_restantes = lambda: {"AbuseIPDB": 0}
+app.atualizar_rodape_cota(reagendar=False)
+check(app.rodape_cota["fg"] == tema.REVISAR, "cota zerada destaca em ambar")
+i18n.definir_idioma("en")
+app.refresh_language()
+check(t("quota_footer") in app.rodape_cota["text"], "rodape acompanha a troca de idioma")
+i18n.definir_idioma("pt")
+app.refresh_language()
+gui.api.cotas_restantes = lambda: {}
+app.atualizar_rodape_cota(reagendar=False)
+
+print("\n[18] Teste de conexao cobre todo estado que a sonda pode devolver")
+from core import api as core_api
+from ui.dialogo_config import ConfigAPIDialog
+
+possiveis = {core_api.FONTE_OK, core_api.FONTE_SEM_CHAVE,
+             core_api.FONTE_COTA, core_api.FONTE_INDISPONIVEL}
+check(possiveis <= set(ConfigAPIDialog.ESTADO_TESTE),
+      "nenhum estado da sonda fica sem rotulo (seria KeyError na tela)")
+for estado, (simbolo, chave, _cor) in ConfigAPIDialog.ESTADO_TESTE.items():
+    check(t(chave) != chave and simbolo, f"{estado} tem simbolo e texto traduzido")
+check(core_api.FONTE_SEM_DADOS not in ConfigAPIDialog.ESTADO_TESTE,
+      "sem_dados nao chega aqui: testar_fontes ja converte 404 em ok")
+
+print("\n[19] Tema claro repinta o que ja esta na tela")
+fundo_escuro = tema.FUNDO
+check(app.rodape_cota["bg"] == fundo_escuro, "rodape comeca no tema escuro")
+tema.aplicar(root, "claro")
+check(tema.nome_atual() == "claro", "paleta trocou")
+check(tema.FUNDO != fundo_escuro, "cor do modulo acompanha a paleta")
+check(app.rodape_cota["bg"] == tema.FUNDO,
+      "widget criado antes da troca foi repintado -- o Tk nao cascateia sozinho")
+check(str(app.tabela_ip.tree.tag_configure("bad", "foreground")) == tema.MALICIOSO,
+      "tag de Treeview, que a repintura nao alcanca, foi refeita pelo ouvinte")
+check(set(tema.PALETAS["claro"]) == set(tema.PALETAS["escuro"]),
+      "as duas paletas tem as mesmas chaves, senao a traducao de cor deixa buraco")
+tema.aplicar(root, "escuro")
+check(app.rodape_cota["bg"] == fundo_escuro, "volta ao escuro repinta de novo")
+
+print("\n[20] Escala de fonte muda tudo de uma vez e tem limite")
+base = tema.fonte("corpo").cget("size")
+tema.definir_escala(2)
+check(tema.fonte("corpo").cget("size") == base + 2, "fonte nomeada cresceu")
+check(tema.fonte("mono").cget("size") == tema.BASE + 2, "a monoespacada cresceu junto")
+check(tema.fator_escala() > 1, "fator acompanha, para a largura de coluna nao cortar texto")
+check(tema.definir_escala(999) == tema.ESCALA_MAX, "escala nao passa do teto")
+check(tema.definir_escala(-999) == tema.ESCALA_MIN, "nem do piso")
+tema.definir_escala(0)
+check(tema.fonte("corpo").cget("size") == base, "volta ao tamanho original")
+
+print("\n[21] Historico da sessao")
+app.historico = {"ip": [], "hash": [], "url": []}
+app._mostrar_pagina("ip")
+app.registrar_historico("ip", "8.8.8.8 1.1.1.1", 2)
+app.registrar_historico("ip", "9.9.9.9", 1)
+check([e["texto"] for e in app.historico["ip"]] == ["9.9.9.9", "8.8.8.8 1.1.1.1"],
+      "mais recente primeiro")
+app.registrar_historico("ip", "8.8.8.8 1.1.1.1", 2)
+check(len(app.historico["ip"]) == 2 and app.historico["ip"][0]["texto"] == "8.8.8.8 1.1.1.1",
+      "repetir uma consulta promove em vez de duplicar")
+app.registrar_historico("ip", "   ", 0)
+check(len(app.historico["ip"]) == 2, "entrada vazia nao entra no historico")
+for i in range(app.LIMITE_HISTORICO + 5):
+    app.registrar_historico("ip", f"10.0.0.{i}", 1)
+check(len(app.historico["ip"]) == app.LIMITE_HISTORICO,
+      f"historico limitado a {app.LIMITE_HISTORICO}")
+check(app.historico["hash"] == [], "cada aba tem o seu historico")
+app._restaurar_historico("77.77.77.77 88.88.88.88")
+check("77.77.77.77" in app.entry.get_text(), "clicar no historico devolve o texto ao campo")
+check("válidos" in app.entry.resumo["text"], "contador do campo acompanha a restauracao")
+
+print("\n[22] Chips de opcao no lugar dos interruptores")
+from ui.widgets import Cartao, Chip
+
+chip = app.toggle_ibm_ip
+check(isinstance(chip, Chip), "a opcao virou chip")
+estado_inicial = app.ibm_var_ip.get()
+chip._alternar()
+check(app.ibm_var_ip.get() != estado_inicial, "clicar no chip alterna a variavel")
+chip._alternar()
+check(app.ibm_var_ip.get() == estado_inicial, "e alterna de volta")
+
+app.pre_var_ip.set(False)
+app._update_mss_state_ip()
+check(app.mss_ip_switch.state == "disabled", "MSS comeca desabilitado, dependendo da pre-analise")
+antes = app.mss_var_ip.get()
+app.mss_ip_switch._alternar()
+check(app.mss_var_ip.get() == antes, "chip desabilitado ignora o clique")
+app.pre_var_ip.set(True)
+app._update_mss_state_ip()
+check(app.mss_ip_switch.state == "normal", "ligar a pre-analise habilita o MSS")
+app.pre_var_ip.set(False)
+app._update_mss_state_ip()
+
+i18n.definir_idioma("en")
+app.refresh_language()
+check(app.toggle_pre_ip._texto == t("toggle_pre_analysis"),
+      "chip acompanha a troca de idioma (config(text=) num Canvas)")
+i18n.definir_idioma("pt")
+app.refresh_language()
+
+cartao = Cartao(root, "section_results", None)
+cartao.config(text="resultados")
+check(cartao.titulo["text"] == "RESULTADOS", "titulo de cartao fica em caixa alta apos o i18n")
+cartao.destroy()
+
+print("\n[23] Campo de entrada acompanha o conteudo")
+campo = app.hash_entry
+campo.texto.delete("1.0", tk.END)
+campo.refresh()
+check(int(campo.texto.cget("height")) == campo.ALTURA_MIN,
+      f"vazio, o campo fica no minimo ({campo.ALTURA_MIN} linhas), sem reservar espaco morto")
+campo.texto.insert("1.0", "\n".join(f"{i:032d}" for i in range(6)))
+campo.refresh()
+check(int(campo.texto.cget("height")) == 6, "cresce conforme o analista cola")
+campo.texto.insert("end", "\n" + "\n".join("x" * 32 for _ in range(40)))
+campo.refresh()
+check(int(campo.texto.cget("height")) == campo.ALTURA_MAX,
+      f"para de crescer no teto ({campo.ALTURA_MAX}) e passa a rolar")
+campo.texto.delete("1.0", tk.END)
+campo.refresh()
+check(int(campo.texto.cget("height")) == campo.ALTURA_MIN, "encolhe de volta ao limpar")
+
+print("\n[24] Tabela nao esconde coluna em janela estreita")
+check(app.tabela_hash.colunas[2][0] == "arquivo",
+      "coluna de arquivo vem depois do veredito, nao no fim da linha")
+check(app.tabela_ip.tree.cget("xscrollcommand") != "",
+      "tabela tem rolagem horizontal: sem ela a ultima coluna some em tela pequena")
+ultima = app.tabela_ip.colunas[-1][0]
+check(app.tabela_ip.tree.column(ultima, "stretch"),
+      "a ultima coluna estica para absorver a sobra de largura")
+check(t("btn_copy") == "Copiar resultados", "o botao de copiar diz o que copia")
+
 root.destroy()
 encerrar()

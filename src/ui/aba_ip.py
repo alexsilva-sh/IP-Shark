@@ -24,7 +24,7 @@ from ui.apresentacao import (
     linha_planilha_ip,
     relatorio_ip,
 )
-from ui.widgets import MultilineInput, ResultTable, ToggleSwitch
+from ui.widgets import Chip
 
 _log = log.obter("aba_ip")
 
@@ -47,68 +47,59 @@ class AbaIP:
 
         self.ip_button = ttk.Button(self.tab_frame, text=t("tab_ip"),
                                     command=self.show_ip_page, style="NavActive.TButton")
-        self.ip_button.grid(row=0, column=0, padx=5)
+        self.ip_button.pack(fill="x", pady=(0, tema.E1))
         self._register_i18n(self.ip_button, "tab_ip")
-        self.page_ip = tk.Frame(self.root, bg=tema.FUNDO)
+        self.page_ip = tk.Frame(self.area_conteudo, bg=tema.FUNDO)
 
-        self.input_label = ttk.Label(self.page_ip, text=t("paste_ips"), style="Title.TLabel")
-        self.input_label.pack(pady=(10, 2))
-        self._register_i18n(self.input_label, "paste_ips")
-        self.entry = MultilineInput(self.page_ip, contar_ips)
-        self.entry.pack(pady=6, padx=20, fill="x")
+        self.input_label, self.entry = self._montar_entrada(self.page_ip, "paste_ips",
+                                                            contar_ips)
+        self.check_button, fontes, relatorio = self._montar_opcoes(
+            self.page_ip, "btn_check_ip", self.run_check)
 
-        toggles = tk.Frame(self.page_ip, bg=tema.FUNDO)
-        toggles.pack(pady=6)
         self.ibm_var_ip = tk.BooleanVar(value=True)
-        self.toggle_ibm_ip = ToggleSwitch(toggles, text=t("toggle_ibm"), variable=self.ibm_var_ip)
-        self.toggle_ibm_ip.pack(side="left", padx=(0, 15))
-        self._register_i18n(self.toggle_ibm_ip.label, "toggle_ibm")
-        coluna = tk.Frame(toggles, bg=tema.FUNDO)
-        coluna.pack(side="left")
+        self.toggle_ibm_ip = Chip(fontes, text=t("toggle_ibm"), variable=self.ibm_var_ip)
+        self.toggle_ibm_ip.pack(side="left")
+        self._register_i18n(self.toggle_ibm_ip, "toggle_ibm")
+
         self.pre_var_ip = tk.BooleanVar(value=False)
-        self.toggle_pre_ip = ToggleSwitch(coluna, text=t("toggle_pre_analysis"),
-                                          variable=self.pre_var_ip)
-        self.toggle_pre_ip.pack(anchor="w")
-        self._register_i18n(self.toggle_pre_ip.label, "toggle_pre_analysis")
+        self.toggle_pre_ip = Chip(relatorio, text=t("toggle_pre_analysis"),
+                                  variable=self.pre_var_ip,
+                                  ao_mudar=self._update_mss_state_ip)
+        self.toggle_pre_ip.pack(side="left")
+        self._register_i18n(self.toggle_pre_ip, "toggle_pre_analysis")
         self.mss_var_ip = tk.BooleanVar(value=False)
-        self.mss_ip_switch = ToggleSwitch(coluna, text=t("toggle_has_mss"),
-                                          variable=self.mss_var_ip, state="disabled")
-        self.mss_ip_switch.pack(anchor="w")
-        self._register_i18n(self.mss_ip_switch.label, "toggle_has_mss")
+        self.mss_ip_switch = Chip(relatorio, text=t("toggle_has_mss"),
+                                  variable=self.mss_var_ip, state="disabled")
+        self.mss_ip_switch.pack(side="left", padx=(tema.E2, 0))
+        self._register_i18n(self.mss_ip_switch, "toggle_has_mss")
         self.pre_var_ip.trace_add("write", self._update_mss_state_ip)
 
-        self.check_button = ttk.Button(self.page_ip, text=t("btn_check_ip"),
-                                       command=self.run_check, style="Primary.TButton")
-        self.check_button.pack(pady=12)
-        self._register_i18n(self.check_button, "btn_check_ip")
-        self.progress_ip, self.status_label = self._montar_progresso(self.page_ip)
-
         self.button_frame = tk.Frame(self.page_ip, bg=tema.FUNDO)
-        self.button_frame.pack(side=tk.BOTTOM, pady=10, fill=tk.X)
+        self.button_frame.pack(side=tk.BOTTOM, pady=tema.E3, fill=tk.X)
         self.button_frame.grid_columnconfigure(0, weight=1)
         self.button_frame.grid_columnconfigure(4, weight=1)
 
-        self.tabela_ip = ResultTable(self.page_ip, [
+        self.tabela_ip, self.progress_ip, self.status_label = self._montar_resultados(
+            self.page_ip, [
             ("#0", "csv_ip", 210, "w"),
-            ("veredito", "col_verdict", 160, "w"),
+            ("veredito", "col_verdict", 175, "w"),
             ("abuse", "col_abuse", 95, "center"),
             ("vt", "col_vt", 95, "center"),
             ("ibm", "col_ibm", 85, "center"),
-            ("pais", "col_country", 140, "w"),
+            ("pais", "col_country", 170, "w"),
         ])
-        self.tabela_ip.pack(padx=10, pady=(0, 5), fill=tk.BOTH, expand=True)
 
         self.copy_button = ttk.Button(self.button_frame, text=t("btn_copy"),
                                       command=self.copy_output, style="Secondary.TButton")
-        self.copy_button.grid(row=0, column=1, padx=10)
+        self.copy_button.grid(row=0, column=1, padx=tema.E2)
         self._register_i18n(self.copy_button, "btn_copy")
         self.save_button = ttk.Button(self.button_frame, text=t("btn_export"),
                                       command=self.save_results, style="Secondary.TButton")
-        self.save_button.grid(row=0, column=2, padx=10)
+        self.save_button.grid(row=0, column=2, padx=tema.E2)
         self._register_i18n(self.save_button, "btn_export")
         self.cancel_button = ttk.Button(self.button_frame, text=t("btn_cancel"),
                                         command=self.cancel_check, style="Danger.TButton")
-        self.cancel_button.grid(row=0, column=3, padx=10)
+        self.cancel_button.grid(row=0, column=3, padx=tema.E2)
         self._register_i18n(self.cancel_button, "btn_cancel")
 
     def show_ip_page(self):
@@ -141,6 +132,7 @@ class AbaIP:
             messagebox.showerror(t("error"), t("no_valid_public_ip"))
             return
         self.ignorados_ip = ignorados
+        self.registrar_historico("ip", self.entry.get_text(), len(ips))
         self.results_ip = []
         self.scanning_ip = True
         self.ibm_ip_ativo = self.ibm_var_ip.get()

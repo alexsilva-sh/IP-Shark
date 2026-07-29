@@ -104,6 +104,37 @@ check("30 min" in aviso, f"o aviso de cota diz em quanto tempo repetir ({aviso[-
 check(apresentacao.aviso_de_cota({"VirusTotal"}) == t("quota_warning").format(fontes="VirusTotal"),
       "fonte sem Retry-After mantem o aviso de antes, sem estimativa inventada")
 
+print("\n[2d] Cota restante e lida do cabecalho, e nunca inventada")
+mockar(RespostaFake(200, {"data": {}}, headers={"X-RateLimit-Remaining": "873"}))
+core.check_ip_abuseipdb("8.8.8.8")
+check(core.cotas_restantes().get("AbuseIPDB") == 873, "restante veio do cabecalho")
+mockar(RespostaFake(200, {"data": {}}))
+core.check_ip_virustotal("8.8.8.8")
+check("VirusTotal" not in core.cotas_restantes(),
+      "API que nao informa cota nao aparece -- rodape vazio nao e cota zerada")
+mockar(RespostaFake(429, headers={"Retry-After": "60"}))
+core.check_ip_abuseipdb("8.8.8.8")
+check(core.cotas_restantes().get("AbuseIPDB") == 0, "429 zera o restante da fonte")
+
+print("\n[2e] Teste de conexao por servico usa a chave digitada, nao a salva")
+mockar(RespostaFake(200, {"data": {}}))
+resultado = core.testar_fontes({"ABUSEIPDB_API_KEY": "digitada", "VIRUSTOTAL_API_KEY": "  "})
+check(resultado == {"ABUSEIPDB_API_KEY": core.FONTE_OK},
+      f"so a chave preenchida e testada ({resultado})")
+enviados = chamadas[-1]
+check(enviados["headers"]["Key"] == "digitada", "a chave testada e a que veio do campo")
+check(core.IP_TESTE not in ("", None) and enviados["params"]["ipAddress"] == core.IP_TESTE,
+      "sonda usa um IP publico fixo, nao dado de cliente")
+mockar(RespostaFake(401))
+check(core.testar_fontes({"ABUSEIPDB_API_KEY": "errada"}) == {"ABUSEIPDB_API_KEY": core.FONTE_SEM_CHAVE},
+      "401 vira 'chave recusada' em vez de falha generica")
+mockar(RespostaFake(404))
+check(core.testar_fontes({"ALIENVAULT_API_KEY": "k"}) == {"ALIENVAULT_API_KEY": core.FONTE_OK},
+      "404 prova que a chave passou e a fonte respondeu")
+mockar(requests.exceptions.ConnectionError())
+check(core.testar_fontes({"IPINFO_API_KEY": "k"}) == {"IPINFO_API_KEY": core.FONTE_INDISPONIVEL},
+      "sem rede o teste acusa indisponivel, nao chave ruim")
+
 print("\n[3] Fonte sem chave nem chega a fazer request")
 core.ABUSEIPDB_API_KEY = None
 mockar(RespostaFake(200, {"data": {}}))
@@ -343,10 +374,12 @@ texto_hash = apresentacao.relatorio_hash(h_vt_fora, com_ibm=False)
 check(t("source_unavailable") in texto_hash, "detalhe do hash diz 'falha na consulta'")
 check(apresentacao.colunas_hash(h_vt_fora, com_ibm=False)[1] == t("verdict_incomplete"),
       "veredito da linha de hash e incompleto")
-check(apresentacao.colunas_hash(h_limpo, com_ibm=False)[5] == "nota.txt",
-      "coluna de arquivo traz o nome do VirusTotal")
-check(apresentacao.colunas_hash(h_vt_fora, com_ibm=False)[5] == "-",
+check(apresentacao.colunas_hash(h_limpo, com_ibm=False)[2] == "nota.txt",
+      "coluna de arquivo traz o nome do VirusTotal, logo depois do veredito")
+check(apresentacao.colunas_hash(h_vt_fora, com_ibm=False)[2] == "-",
       "sem resposta do VirusTotal, a coluna de arquivo fica vazia")
+check(apresentacao.colunas_hash(h_limpo, com_ibm=False)[-1] != "nota.txt",
+      "o arquivo saiu do fim da linha, onde era o primeiro a sair da tela")
 check(apresentacao.colunas_url(u_fora, com_ibm=False)[1] == t("verdict_incomplete"),
       "veredito da linha de dominio e incompleto")
 

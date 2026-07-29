@@ -40,7 +40,7 @@ from ui.apresentacao import (
     relatorio_ip,
     relatorio_url,
 )
-from ui.widgets import MultilineInput, ResultTable, ToggleSwitch
+from ui.widgets import Chip
 
 _log = log.obter("aba_url")
 
@@ -93,74 +93,64 @@ class AbaURL:
 
         self.url_button = ttk.Button(self.tab_frame, text=t("tab_domain"),
                                      command=self.show_url_page, style="Nav.TButton")
-        self.url_button.grid(row=0, column=2, padx=5)
+        self.url_button.pack(fill="x", pady=(0, tema.E1))
         self._register_i18n(self.url_button, "tab_domain")
-        self.page_url = tk.Frame(self.root, bg=tema.FUNDO)
+        self.page_url = tk.Frame(self.area_conteudo, bg=tema.FUNDO)
 
-        self.input_label_url = ttk.Label(self.page_url, text=t("paste_domains"),
-                                         style="Title.TLabel")
-        self.input_label_url.pack(pady=(10, 2))
-        self._register_i18n(self.input_label_url, "paste_domains")
-        self.url_entry = MultilineInput(self.page_url, contar_dominios)
-        self.url_entry.pack(pady=6, padx=20, fill="x")
+        self.input_label_url, self.url_entry = self._montar_entrada(
+            self.page_url, "paste_domains", contar_dominios)
+        self.url_button_action, fontes, relatorio = self._montar_opcoes(
+            self.page_url, "btn_check_domain", self.run_url_check)
 
-        toggles = tk.Frame(self.page_url, bg=tema.FUNDO)
-        toggles.pack(pady=6)
         self.ibm_var_url = tk.BooleanVar(value=True)
-        self.toggle_ibm_url = ToggleSwitch(toggles, text=t("toggle_ibm"), variable=self.ibm_var_url)
-        self.toggle_ibm_url.pack(side="left", padx=(0, 15))
-        self._register_i18n(self.toggle_ibm_url.label, "toggle_ibm")
+        self.toggle_ibm_url = Chip(fontes, text=t("toggle_ibm"), variable=self.ibm_var_url)
+        self.toggle_ibm_url.pack(side="left")
+        self._register_i18n(self.toggle_ibm_url, "toggle_ibm")
         self.check_ips_var_url = tk.BooleanVar(value=True)
-        self.toggle_check_ips = ToggleSwitch(toggles, text=t("toggle_check_ips"),
-                                             variable=self.check_ips_var_url)
-        self.toggle_check_ips.pack(side="left", padx=(0, 15))
-        self._register_i18n(self.toggle_check_ips.label, "toggle_check_ips")
-        coluna = tk.Frame(toggles, bg=tema.FUNDO)
-        coluna.pack(side="left")
+        self.toggle_check_ips = Chip(fontes, text=t("toggle_check_ips"),
+                                     variable=self.check_ips_var_url)
+        self.toggle_check_ips.pack(side="left", padx=(tema.E2, 0))
+        self._register_i18n(self.toggle_check_ips, "toggle_check_ips")
+
         self.pre_var_url = tk.BooleanVar(value=False)
-        self.toggle_pre_url = ToggleSwitch(coluna, text=t("toggle_pre_analysis"),
-                                           variable=self.pre_var_url)
-        self.toggle_pre_url.pack(anchor="w")
-        self._register_i18n(self.toggle_pre_url.label, "toggle_pre_analysis")
+        self.toggle_pre_url = Chip(relatorio, text=t("toggle_pre_analysis"),
+                                   variable=self.pre_var_url,
+                                   ao_mudar=self._update_mss_state_url)
+        self.toggle_pre_url.pack(side="left")
+        self._register_i18n(self.toggle_pre_url, "toggle_pre_analysis")
         self.mss_var_url = tk.BooleanVar(value=False)
-        self.mss_url_switch = ToggleSwitch(coluna, text=t("toggle_has_mss"),
-                                           variable=self.mss_var_url, state="disabled")
-        self.mss_url_switch.pack(anchor="w")
-        self._register_i18n(self.mss_url_switch.label, "toggle_has_mss")
+        self.mss_url_switch = Chip(relatorio, text=t("toggle_has_mss"),
+                                   variable=self.mss_var_url, state="disabled")
+        self.mss_url_switch.pack(side="left", padx=(tema.E2, 0))
+        self._register_i18n(self.mss_url_switch, "toggle_has_mss")
         self.pre_var_url.trace_add("write", self._update_mss_state_url)
 
-        self.url_button_action = ttk.Button(self.page_url, text=t("btn_check_domain"),
-                                            command=self.run_url_check, style="Primary.TButton")
-        self.url_button_action.pack(pady=12)
-        self._register_i18n(self.url_button_action, "btn_check_domain")
-        self.progress_url, self.url_status_label = self._montar_progresso(self.page_url)
-
         self.url_button_frame = tk.Frame(self.page_url, bg=tema.FUNDO)
-        self.url_button_frame.pack(side=tk.BOTTOM, pady=10, fill=tk.X)
+        self.url_button_frame.pack(side=tk.BOTTOM, pady=tema.E3, fill=tk.X)
         self.url_button_frame.grid_columnconfigure(0, weight=1)
         self.url_button_frame.grid_columnconfigure(4, weight=1)
 
-        self.tabela_url = ResultTable(self.page_url, [
+        self.tabela_url, self.progress_url, self.url_status_label = self._montar_resultados(
+            self.page_url, [
             ("#0", "csv_domain", 260, "w"),
-            ("veredito", "col_verdict", 160, "w"),
+            ("veredito", "col_verdict", 175, "w"),
             ("abuse", "col_abuse", 95, "center"),
             ("vt", "col_vt", 95, "center"),
             ("ibm", "col_ibm", 85, "center"),
-            ("alien", "col_alien", 95, "center"),
+            ("alien", "col_alien", 110, "center"),
         ])
-        self.tabela_url.pack(padx=10, pady=(0, 5), fill=tk.BOTH, expand=True)
 
         self.url_copy_button = ttk.Button(self.url_button_frame, text=t("btn_copy"),
                                           command=self.copy_url_output, style="Secondary.TButton")
-        self.url_copy_button.grid(row=0, column=1, padx=10)
+        self.url_copy_button.grid(row=0, column=1, padx=tema.E2)
         self._register_i18n(self.url_copy_button, "btn_copy")
         self.url_save_button = ttk.Button(self.url_button_frame, text=t("btn_export"),
                                           command=self.save_url_results, style="Secondary.TButton")
-        self.url_save_button.grid(row=0, column=2, padx=10)
+        self.url_save_button.grid(row=0, column=2, padx=tema.E2)
         self._register_i18n(self.url_save_button, "btn_export")
         self.url_cancel_button = ttk.Button(self.url_button_frame, text=t("btn_cancel"),
                                             command=self.cancel_check_url, style="Danger.TButton")
-        self.url_cancel_button.grid(row=0, column=3, padx=10)
+        self.url_cancel_button.grid(row=0, column=3, padx=tema.E2)
         self._register_i18n(self.url_cancel_button, "btn_cancel")
 
     def show_url_page(self):
@@ -196,6 +186,7 @@ class AbaURL:
             messagebox.showerror(t("error"), t("no_valid_domain"))
             return
         self.ignorados_url = ignorados
+        self.registrar_historico("url", self.url_entry.get_text(), len(url_list))
         self.stop_flag = False
         self.currently_processing_urls.clear()
         self.url_status_label.config(text="")

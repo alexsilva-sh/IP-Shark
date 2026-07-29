@@ -8,90 +8,165 @@ from ui import tema
 from ui.apresentacao import VERDICT_TAGS
 
 
-class ToggleSwitch(tk.Frame):
-    def __init__(self, master, text="", variable=None, on_bg="#00c853", off_bg="#3a3a3a",
-                 width=48, height=26, state="normal", **kw):
-        super().__init__(master, bg=master["bg"], **kw)
+def _retangulo_arredondado(canvas, x0, y0, x1, y1, raio, **kw):
+    """Canto arredondado no Tk sai de um poligono suavizado: nao existe borda-raio."""
+    pontos = [x0 + raio, y0, x1 - raio, y0, x1, y0, x1, y0 + raio,
+              x1, y1 - raio, x1, y1, x1 - raio, y1, x0 + raio, y1,
+              x0, y1, x0, y1 - raio, x0, y0 + raio, x0, y0]
+    return canvas.create_polygon(pontos, smooth=True, **kw)
+
+
+class Chip(tk.Canvas):
+    """Pilula de opcao: preenchida com o acento quando ativa, so contornada quando nao.
+
+    Substitui o interruptor animado. Ocupa menos altura, que e o que importa em tela
+    pequena, e o estado fica legivel pelo simbolo alem da cor (secao 3.3).
+    """
+
+    RAIO = 11
+    ALTURA_EXTRA = 12
+    LARGURA_EXTRA = 30
+
+    def __init__(self, master, text="", variable=None, state="normal", ao_mudar=None):
+        super().__init__(master, bg=master["bg"], highlightthickness=0, bd=0, cursor="hand2")
         self.var = variable or tk.BooleanVar(value=False)
         self.state = state
-        self.on_bg = on_bg
-        self.off_bg = off_bg
-        self.canvas = tk.Canvas(self, width=width, height=height, highlightthickness=0, bg=master["bg"])
-        self.canvas.pack(side="left")
-        self.label = tk.Label(self, text=text, fg="white", bg=master["bg"])
-        self.label.pack(side="left", padx=(6, 0))
-        r = height // 2 - 2
-        self.x = 2
-        self.l = self.canvas.create_oval(2, 2, height - 2, height - 2, fill=off_bg, outline="")
-        self.m = self.canvas.create_rectangle(height // 2, 2, width - height // 2, height - 2, fill=off_bg, outline="")
-        self.r = self.canvas.create_oval(width - height + 2, 2, width - 2, height - 2, fill=off_bg, outline="")
-        self.shadow = self.canvas.create_oval(3, 3, 3 + 2 * r, 3 + 2 * r, fill="#000", outline="", stipple="gray25")
-        self.knob = self.canvas.create_oval(2, 2, 2 + 2 * r, 2 + 2 * r, fill="#fff", outline="")
-        self.canvas.bind("<Button-1>", self._toggle)
-        self.label.bind("<Button-1>", self._toggle)
-        self.canvas.bind("<Enter>", lambda e: self._hover(True))
-        self.canvas.bind("<Leave>", lambda e: self._hover(False))
-        self._update()
-        if state == "disabled":
-            self._disable()
+        self._texto = text
+        self._ao_mudar = ao_mudar
+        self._sob_cursor = False
+        self.bind("<Button-1>", self._alternar)
+        self.bind("<Enter>", lambda _e: self._realcar(True))
+        self.bind("<Leave>", lambda _e: self._realcar(False))
+        tema.ao_trocar(self._desenhar)
+        self._desenhar()
 
-    def _set_track(self, cor):
-        for parte in (self.l, self.m, self.r):
-            self.canvas.itemconfig(parte, fill=cor)
+    # `_register_i18n` chama config(text=...); um Canvas nao aceita, entao interceptamos.
+    def configure(self, **kw):
+        if "text" in kw:
+            self._texto = kw.pop("text")
+            self._desenhar()
+        if kw:
+            super().configure(**kw)
 
-    def _toggle(self, _=None):
+    config = configure
+
+    def set_text(self, texto):
+        self.configure(text=texto)
+
+    def set_state(self, estado):
+        self.state = estado
+        self._desenhar()
+
+    def _alternar(self, _=None):
         if self.state == "disabled":
             return
         self.var.set(not self.var.get())
-        self._update()
+        self._desenhar()
+        if self._ao_mudar:
+            self._ao_mudar()
 
-    def _update(self):
-        w = int(self.canvas["width"])
-        h = int(self.canvas["height"])
-        r = h // 2 - 2
-        alvo = w - 2 - 2 * r if self.var.get() else 2
-        self._set_track(self.on_bg if self.var.get() else self.off_bg)
-        for i in range(8):
-            nx = self.x + (alvo - self.x) * (i + 1) / 8
-            self.canvas.after(i * 10, lambda x=nx: self._move(x))
-        self.x = alvo
+    def _realcar(self, dentro):
+        self._sob_cursor = dentro
+        self._desenhar()
 
-    def _move(self, x):
-        r = int(self.canvas["height"]) // 2 - 2
-        self.canvas.coords(self.knob, x, 2, x + 2 * r, 2 + 2 * r)
-        self.canvas.coords(self.shadow, x + 1, 3, x + 1 + 2 * r, 3 + 2 * r)
+    def _cores(self):
+        if self.state == "disabled":
+            return tema.FUNDO_PAINEL, tema.BORDA, tema.TEXTO_SECUNDARIO
+        if self.var.get():
+            fundo = tema.ACENTO_ATIVO if self._sob_cursor else tema.ACENTO
+            return fundo, fundo, "#ffffff"
+        borda = tema.TEXTO_SECUNDARIO if self._sob_cursor else tema.BORDA
+        return self.master["bg"], borda, tema.TEXTO
 
-    def _hover(self, ligado):
-        if self.state != "disabled" and self.var.get():
-            self._set_track("#2ee96b" if ligado else self.on_bg)
+    def _desenhar(self):
+        try:
+            fonte = tema.fonte("corpo")
+            marca = "✓ " if self.var.get() else ""
+            rotulo = marca + self._texto
+            largura = fonte.measure(rotulo) + self.LARGURA_EXTRA
+            altura = fonte.metrics("linespace") + self.ALTURA_EXTRA
+            self.config(width=largura, height=altura, bg=self.master["bg"])
+            self.delete("all")
+            fundo, borda, texto = self._cores()
+            _retangulo_arredondado(self, 1, 1, largura - 1, altura - 1, self.RAIO,
+                                   fill=fundo, outline=borda, width=1)
+            self.create_text(largura / 2, altura / 2, text=rotulo, fill=texto, font=fonte)
+        except tk.TclError:
+            pass   # widget ja destruido
 
-    def _disable(self):
-        self.label.config(fg="#666")
-        self._set_track("#2a2a2a")
-        self.canvas.itemconfig(self.knob, fill="#888")
-        self.canvas.itemconfig(self.shadow, fill="")
 
-    def set_state(self, s):
-        self.state = s
-        self._disable() if s == "disabled" else self._update()
+class RotuloSecao(tk.Label):
+    """Titulo de grupo em caixa alta que sobrevive a troca de idioma."""
 
-    def set_text(self, texto):
-        self.label.config(text=texto)
+    def __init__(self, master, chave):
+        super().__init__(master, text=t(chave).upper(), bg=master["bg"],
+                         fg=tema.TEXTO_SECUNDARIO, font=tema.fonte("menor"), anchor="w")
+
+    def configure(self, **kw):
+        if "text" in kw:
+            kw["text"] = kw["text"].upper()
+        super().configure(**kw)
+
+    config = configure
+
+
+class Cartao(tk.Frame):
+    """Superficie de secao: fundo elevado, borda de 1 px e titulo opcional.
+
+    A borda sai de um Frame externo com 1 px de padding -- o Tk nao tem borda colorida
+    de espessura fixa que respeite o tema.
+    """
+
+    def __init__(self, master, chave_titulo=None, registrar=None):
+        super().__init__(master, bg=tema.BORDA)
+        interno = tk.Frame(self, bg=tema.FUNDO_PAINEL)
+        interno.pack(fill="both", expand=True, padx=1, pady=1)
+        self.titulo = None
+        if chave_titulo:
+            self.titulo = tk.Label(interno, text=t(chave_titulo).upper(), bg=tema.FUNDO_PAINEL,
+                                   fg=tema.TEXTO_SECUNDARIO, font=tema.fonte("menor"),
+                                   anchor="w")
+            self.titulo.pack(fill="x", padx=tema.E4, pady=(tema.E3, tema.E2))
+            if registrar:
+                registrar(self, chave_titulo)
+        self.corpo = tk.Frame(interno, bg=tema.FUNDO_PAINEL)
+        self.corpo.pack(fill="both", expand=True, padx=tema.E4,
+                        pady=(0, tema.E4) if chave_titulo else tema.E4)
+
+    def configure(self, **kw):
+        """Titulo de secao em caixa alta: intercepta para o i18n nao perder o estilo."""
+        if "text" in kw and self.titulo is not None:
+            self.titulo.config(text=kw.pop("text").upper())
+        if kw:
+            super().configure(**kw)
+
+    config = configure
 
 
 class MultilineInput(tk.Frame):
-    """Campo de varias linhas com contador ao vivo do conteudo colado."""
+    """Campo de varias linhas com contador ao vivo e altura que segue o conteudo.
 
-    def __init__(self, master, contador, altura=4):
+    Comeca baixo em vez de reservar quatro linhas vazias, e cresce ate ALTURA_MAX conforme
+    o analista cola. Passando disso, rola.
+    """
+
+    ALTURA_MIN = 2
+    # Teto pensado para 720 px de altura: acima disso a entrada come o espaco da tabela e
+    # do painel de detalhe, que importam mais depois que a varredura comeca.
+    ALTURA_MAX = 8
+
+    def __init__(self, master, contador, altura=None):
         super().__init__(master, bg=master["bg"])
         self._contador = contador
-        self.texto = tk.Text(self, height=altura, bg=tema.FUNDO_CAMPO, fg="white",
-                             insertbackground="white", font=("Consolas", 10), relief=tk.FLAT,
-                             wrap=tk.WORD, padx=8, pady=6, undo=True)
+        self.texto = tk.Text(self, height=altura or self.ALTURA_MIN,
+                             bg=tema.FUNDO_CAMPO, fg=tema.TEXTO,
+                             insertbackground=tema.TEXTO, font=tema.fonte("mono"),
+                             relief=tk.FLAT, wrap=tk.WORD, padx=tema.E2, pady=tema.E2,
+                             undo=True)
         self.texto.pack(fill="x")
         self.resumo = tk.Label(self, bg=master["bg"], fg=tema.TEXTO_SECUNDARIO,
-                               font=("Segoe UI", 9), anchor="w")
-        self.resumo.pack(fill="x", pady=(4, 0))
+                               font=tema.fonte("corpo"), anchor="w")
+        self.resumo.pack(fill="x", pady=(tema.E1, 0))
         self.texto.bind("<KeyRelease>", self.refresh)
         self.texto.bind("<<Paste>>", lambda e: self.after(20, self.refresh))
         self.refresh()
@@ -104,6 +179,17 @@ class MultilineInput(tk.Frame):
 
     def refresh(self, _=None):
         self.resumo.config(text=self._contador(self.get_text()))
+        self._ajustar_altura()
+
+    def _ajustar_altura(self):
+        """Conta linhas logicas: a entrada e um indicador por linha, nao texto corrido."""
+        try:
+            linhas = int(self.texto.index("end-1c").split(".")[0])
+            desejada = max(self.ALTURA_MIN, min(self.ALTURA_MAX, linhas))
+            if desejada != int(self.texto.cget("height")):
+                self.texto.config(height=desejada)
+        except (tk.TclError, ValueError):
+            pass   # widget destruido no meio de um callback atrasado
 
 
 class ResultTable(tk.Frame):
@@ -117,7 +203,7 @@ class ResultTable(tk.Frame):
         self._preambulo = ""
         self._ordenacao = (None, False)
 
-        painel = tk.PanedWindow(self, orient="vertical", bg=tema.FUNDO, sashwidth=6,
+        painel = tk.PanedWindow(self, orient="vertical", bg=tema.FUNDO, sashwidth=tema.E2,
                                 sashrelief="flat", bd=0, sashpad=0)
         painel.pack(fill="both", expand=True)
 
@@ -126,38 +212,60 @@ class ResultTable(tk.Frame):
         self.tree = ttk.Treeview(quadro_tabela, columns=ids[1:], show="tree headings",
                                  style="Result.Treeview", selectmode="browse")
         barra = ttk.Scrollbar(quadro_tabela, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=barra.set)
+        # Barra horizontal: em tela menor a soma das colunas passa da largura da janela, e
+        # sem ela as ultimas colunas ficavam inalcancaveis, nao so apertadas.
+        barra_h = ttk.Scrollbar(quadro_tabela, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=barra.set, xscrollcommand=barra_h.set)
         barra.pack(side="right", fill="y")
+        barra_h.pack(side="bottom", fill="x")
         self.tree.pack(side="left", fill="both", expand=True)
 
-        self.tree.column("#0", width=colunas[0][2], minwidth=140, anchor="w", stretch=True)
+        self.tree.column("#0", width=colunas[0][2], minwidth=120, anchor="w", stretch=False)
         self.tree.heading("#0", anchor="w", command=lambda: self._ordenar("#0"))
-        for cid, _chave, largura, ancora in colunas[1:]:
-            self.tree.column(cid, width=largura, minwidth=60, anchor=ancora, stretch=False)
+        for indice, (cid, _chave, largura, ancora) in enumerate(colunas[1:]):
+            # A ultima coluna estica para absorver a sobra; as demais mantem a largura.
+            ultima = indice == len(colunas) - 2
+            self.tree.column(cid, width=largura, minwidth=60, anchor=ancora, stretch=ultima)
             self.tree.heading(cid, anchor=ancora, command=lambda c=cid: self._ordenar(c))
 
-        self.tree.tag_configure("bad", foreground=tema.MALICIOSO)
-        self.tree.tag_configure("review", foreground=tema.REVISAR)
-        self.tree.tag_configure("clean", foreground=tema.LIMPO)
-        self.tree.tag_configure("unknown", foreground=tema.INDISPONIVEL)
         self.tree.bind("<<TreeviewSelect>>", self._ao_selecionar)
 
         quadro_detalhe = tk.Frame(painel, bg=tema.FUNDO)
         self.detalhe = scrolledtext.ScrolledText(quadro_detalhe, wrap=tk.WORD, bg=tema.FUNDO_TABELA,
-                                                 fg=tema.TEXTO, font=("Consolas", 10),
+                                                 fg=tema.TEXTO, font=tema.fonte("mono"),
                                                  relief=tk.FLAT, height=altura_detalhe,
-                                                 padx=10, pady=8)
+                                                 padx=tema.E3, pady=tema.E2)
         self.detalhe.pack(fill="both", expand=True)
-        self.detalhe.tag_configure("cabecalho", font=("Consolas", 10, "bold"))
-        self.detalhe.tag_configure("dica", foreground="#6b6b6b")
-        self.detalhe.tag_configure("preambulo", foreground=tema.REVISAR)
         self.detalhe.config(state=tk.DISABLED)
 
-        painel.add(quadro_tabela, stretch="always", minsize=140)
-        painel.add(quadro_detalhe, stretch="never", minsize=90)
+        # minsize do detalhe garante espaco util em janela baixa: com 90 px ele encolhia
+        # para uma linha e o analista perdia os links de vista.
+        painel.add(quadro_tabela, stretch="always", minsize=120)
+        painel.add(quadro_detalhe, stretch="never", minsize=150)
 
+        self._aplicar_tema()
+        tema.ao_trocar(self._aplicar_tema)
         self.refresh_language()
         self.clear()
+
+    def _aplicar_tema(self):
+        """Tag de Treeview e de Text guarda a cor por valor: precisa ser refeita na troca."""
+        try:
+            for tag, chave in (("bad", "MALICIOSO"), ("review", "REVISAR"),
+                               ("clean", "LIMPO"), ("unknown", "INDISPONIVEL")):
+                self.tree.tag_configure(tag, foreground=getattr(tema, chave))
+            self.detalhe.config(font=tema.fonte("mono"))
+            self.detalhe.tag_configure("cabecalho", font=tema.fonte("mono_forte"))
+            self.detalhe.tag_configure("dica", foreground=tema.TEXTO_SECUNDARIO)
+            self.detalhe.tag_configure("preambulo", foreground=tema.REVISAR)
+            fator = tema.fator_escala()
+            self.tree.column("#0", width=int(self.colunas[0][2] * fator))
+            for cid, _chave, largura, _ancora in self.colunas[1:]:
+                self.tree.column(cid, width=int(largura * fator))
+            for filho in self.winfo_children():
+                filho.config(bg=tema.FUNDO)
+        except tk.TclError:
+            pass   # tabela ja destruida
 
     def refresh_language(self):
         self.tree.heading("#0", text=t(self.colunas[0][1]), anchor="w")

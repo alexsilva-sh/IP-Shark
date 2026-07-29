@@ -19,7 +19,7 @@ STRINGS = {
     "tab_domain": "Domínio",
 
     # Botões
-    "btn_copy": "Copiar",
+    "btn_copy": "Copiar resultados",
     "btn_export": "Exportar",
     "btn_cancel": "Cancelar",
     "btn_check_ip": "Consultar IP",
@@ -188,6 +188,10 @@ STRINGS = {
     
     # Toggles
     "toggle_ibm": "IBM X-Force",
+    "section_input": "Entrada",
+    "section_sources": "Fontes consultadas",
+    "section_report": "Relatório",
+    "section_results": "Resultados",
     "toggle_pre_analysis": "Pré-análise",
     "toggle_has_mss": "Cliente tem MSS?",
 
@@ -210,6 +214,15 @@ STRINGS = {
     "cfg_show": "Mostrar",
     "cfg_hide": "Ocultar",
     "cfg_get_key": "Obter chave",
+    "cfg_test": "Testar conexão",
+    "cfg_testing": "testando…",
+    "cfg_test_ok": "respondeu",
+    "cfg_test_rejected": "chave recusada",
+    "cfg_test_none": "Preencha ao menos uma chave para testar.",
+    "cfg_test_cost": "Cada teste gasta uma consulta da cota de cada API.",
+    "quota_footer": "Cota restante hoje",
+    "history_title": "Histórico da sessão",
+    "history_empty": "As consultas desta sessão aparecem aqui. Nada é gravado em disco.",
     "cfg_save": "Salvar",
     "cfg_cancel": "Cancelar",
     "cfg_saved_title": "Chaves salvas",

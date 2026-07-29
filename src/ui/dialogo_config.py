@@ -3,9 +3,11 @@ import os
 import sys
 import tkinter as tk
 import webbrowser
+from threading import Thread
 from tkinter import messagebox, ttk
 
 import log
+from core import api
 from core.api import carregar_chaves_salvas, reload_api_keys, salvar_chaves
 from i18n import t
 from services import cofre
@@ -85,10 +87,16 @@ class ConfigAPIDialog(tk.Toplevel):
                        command=self._remover_legado).pack(anchor="w")
             self.quadro_legado = quadro
 
+        tk.Label(corpo, text=t("cfg_test_cost"), bg=tema.FUNDO, fg=tema.TEXTO_SECUNDARIO,
+                 font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(14, 0))
+
         rodape = tk.Frame(corpo, bg=tema.FUNDO)
-        rodape.pack(fill="x", pady=(18, 0))
+        rodape.pack(fill="x", pady=(6, 0))
         ttk.Button(rodape, text=t("cfg_erase"), style="Danger.TButton",
                    command=self._apagar_tudo).pack(side="left")
+        self.botao_testar = ttk.Button(rodape, text=t("cfg_test"), style="Secondary.TButton",
+                                       command=self._testar)
+        self.botao_testar.pack(side="left", padx=(8, 0))
         ttk.Button(rodape, text=t("cfg_save"), style="Primary.TButton",
                    command=self._salvar).pack(side="right")
         ttk.Button(rodape, text=t("cfg_cancel"), style="Secondary.TButton",
@@ -129,6 +137,54 @@ class ConfigAPIDialog(tk.Toplevel):
         else:
             campo.config(show="•")
             botao.config(text=t("cfg_show"))
+
+    # ---------- teste de conexao ----------
+
+    ESTADO_TESTE = {
+        api.FONTE_OK: ("✓", "cfg_test_ok", tema.LIMPO),
+        api.FONTE_SEM_CHAVE: ("✗", "cfg_test_rejected", tema.MALICIOSO),
+        api.FONTE_COTA: ("▲", "source_quota", tema.REVISAR),
+        api.FONTE_INDISPONIVEL: ("✗", "source_unavailable", tema.MALICIOSO),
+    }
+
+    def _testar(self):
+        chaves = {nome: campo.get().strip() for nome, campo in self.campos.items()}
+        if not any(chaves.values()):
+            messagebox.showinfo(t("cfg_test"), t("cfg_test_none"), parent=self)
+            return
+        self.botao_testar.config(state="disabled")
+        for nome, valor in chaves.items():
+            if valor:
+                self.revelado[nome][1].config(text=f"◌ {t('cfg_testing')}",
+                                              fg=tema.TEXTO_SECUNDARIO)
+        Thread(target=self._testar_em_segundo_plano, args=(chaves,), daemon=True).start()
+
+    def _testar_em_segundo_plano(self, chaves):
+        """A consulta e de rede: nao pode rodar na thread do Tk, e o retorno volta por after."""
+        try:
+            resultados = api.testar_fontes(chaves)
+        except Exception:
+            _log.exception("falha inesperada ao testar as chaves")
+            resultados = {}
+        self._agendar(lambda: self._mostrar_resultado_teste(chaves, resultados))
+
+    def _agendar(self, acao):
+        try:
+            self.after(0, acao)
+        except tk.TclError:
+            pass   # janela fechada antes do teste voltar
+
+    def _mostrar_resultado_teste(self, chaves, resultados):
+        for nome in self.campos:
+            if not chaves.get(nome):
+                continue
+            estado = resultados.get(nome, api.FONTE_INDISPONIVEL)
+            simbolo, chave_texto, cor = self.ESTADO_TESTE[estado]
+            self.revelado[nome][1].config(text=f"{simbolo} {t(chave_texto)}", fg=cor)
+        try:
+            self.botao_testar.config(state="normal")
+        except tk.TclError:
+            pass
 
     def _salvar(self):
         valores = {nome: campo.get().strip() for nome, campo in self.campos.items()}

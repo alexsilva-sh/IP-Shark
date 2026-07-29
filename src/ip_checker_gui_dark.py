@@ -32,27 +32,27 @@ def main():
     root.state("zoomed")
     root.title(TITULO)
 
-    barra = tk.Frame(root, bg=tema.FUNDO)
-    barra.pack(pady=(5, 0))
+    app = IPCheckerApp(root)
+
+    botao_config = ttk.Button(app.acoes_topo, text=t("btn_config_api"),
+                              style="Secondary.TButton",
+                              command=lambda: ConfigAPIDialog(root))
+    botao_config.pack(side="left", padx=(0, tema.E3))
+    app._register_i18n(botao_config, "btn_config_api")
+
     botoes_idioma = {
-        "pt": ttk.Button(barra, text="🇧🇷 PT", style="Nav.TButton",
+        "pt": ttk.Button(app.acoes_topo, text="🇧🇷 PT", style="Secondary.TButton",
                          command=lambda: i18n.definir_idioma("pt")),
-        "en": ttk.Button(barra, text="🇺🇸 EN", style="Nav.TButton",
+        "en": ttk.Button(app.acoes_topo, text="🇺🇸 EN", style="Secondary.TButton",
                          command=lambda: i18n.definir_idioma("en")),
     }
     for botao in botoes_idioma.values():
-        botao.pack(side="left", padx=5)
-
-    app = IPCheckerApp(root)
-
-    botao_config = ttk.Button(barra, text=t("btn_config_api"), style="Secondary.TButton",
-                              command=lambda: ConfigAPIDialog(root))
-    botao_config.pack(side="left", padx=(15, 5))
-    app._register_i18n(botao_config, "btn_config_api")
+        botao.pack(side="left", padx=(tema.E1, 0))
 
     def destacar_idioma():
         for lang, botao in botoes_idioma.items():
-            botao.config(style="NavActive.TButton" if lang == i18n.idioma_atual() else "Nav.TButton")
+            botao.config(style="Primary.TButton" if lang == i18n.idioma_atual()
+                         else "Secondary.TButton")
 
     i18n.ao_trocar_idioma(app.refresh_language)
     i18n.ao_trocar_idioma(destacar_idioma)

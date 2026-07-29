@@ -55,30 +55,58 @@ def _sessao():
     return sessao
 
 
-_esperas_cota = {}
+URL_ABUSEIPDB = "https://api.abuseipdb.com/api/v2/check"
+URL_VT_IP = "https://www.virustotal.com/api/v3/ip_addresses/{}"
+URL_VT_ARQUIVO = "https://www.virustotal.com/api/v3/files/{}"
+URL_VT_URL = "https://www.virustotal.com/api/v3/urls/{}"
+URL_OTX = "https://otx.alienvault.com/api/v1/indicators/{}/{}/general"
+URL_IPINFO = "https://ipinfo.io/{}/json"
+
+# O que cada API conta sobre a propria cota: {fonte: {"restante": int, "espera": int}}.
+_cotas = {}
 _lock_cota = threading.Lock()
 
 
-def _registrar_espera(fonte, resposta):
-    """Guarda o Retry-After do 429 para o relatorio dizer quando vale repetir.
+def _inteiro(bruto):
+    try:
+        return max(0, int(float(bruto)))
+    except (TypeError, ValueError):
+        return None
 
-    O cabecalho tambem admite data HTTP; nessa forma fica sem registro e o aviso sai
-    apenas sem a estimativa, que e o comportamento de antes.
+
+def _registrar_cota(fonte, resposta):
+    """Le o que a resposta contou sobre a cota. Nunca inventa numero.
+
+    `Retry-After` tambem admite data HTTP; nessa forma nao vira estimativa, e o aviso sai
+    sem o prazo em vez de sair com um valor chutado.
     """
     if not fonte:
         return
-    try:
-        segundos = int(float(resposta.headers.get("Retry-After")))
-    except (TypeError, ValueError):
-        return
-    with _lock_cota:
-        _esperas_cota[fonte] = max(0, segundos)
+    novo = {}
+    restante = _inteiro(resposta.headers.get("X-RateLimit-Remaining"))
+    if restante is not None:
+        novo["restante"] = restante
+    if resposta.status_code == 429:
+        espera = _inteiro(resposta.headers.get("Retry-After"))
+        if espera is not None:
+            novo["espera"] = espera
+        novo["restante"] = 0
+    if novo:
+        with _lock_cota:
+            _cotas.setdefault(fonte, {}).update(novo)
 
 
 def espera_de_cota(fonte):
     """Segundos ate a cota da fonte renovar, se a API informou. None se nao informou."""
     with _lock_cota:
-        return _esperas_cota.get(fonte)
+        return _cotas.get(fonte, {}).get("espera")
+
+
+def cotas_restantes():
+    """{fonte: consultas restantes}, so das APIs que informam o cabecalho."""
+    with _lock_cota:
+        return {fonte: dados["restante"] for fonte, dados in _cotas.items()
+                if dados.get("restante") is not None}
 
 ABUSEIPDB_API_KEY = None
 VIRUSTOTAL_API_KEY = None
@@ -139,8 +167,8 @@ def _consultar(url, fonte=None, **kwargs):
         resposta = _sessao().get(url, **kwargs)
     except requests.exceptions.RequestException:
         return None, FONTE_INDISPONIVEL
+    _registrar_cota(fonte, resposta)
     if resposta.status_code == 429:
-        _registrar_espera(fonte, resposta)
         return None, FONTE_COTA
     if resposta.status_code == 404:
         return None, FONTE_SEM_DADOS
@@ -158,7 +186,7 @@ def check_ip_abuseipdb(ip):
     reload_api_keys()
     if not ABUSEIPDB_API_KEY:
         return None, FONTE_SEM_CHAVE
-    return _consultar("https://api.abuseipdb.com/api/v2/check", fonte="AbuseIPDB",
+    return _consultar(URL_ABUSEIPDB, fonte="AbuseIPDB",
                       headers={"Accept": "application/json", "Key": ABUSEIPDB_API_KEY},
                       params={"ipAddress": ip, "maxAgeInDays": 90})
 
@@ -167,7 +195,7 @@ def check_ip_virustotal(ip):
     reload_api_keys()
     if not VIRUSTOTAL_API_KEY:
         return None, FONTE_SEM_CHAVE
-    return _consultar(f"https://www.virustotal.com/api/v3/ip_addresses/{ip}",
+    return _consultar(URL_VT_IP.format(ip),
                       fonte="VirusTotal", headers={"x-apikey": VIRUSTOTAL_API_KEY})
 
 
@@ -175,7 +203,7 @@ def check_hash_virustotal(hash_str):
     reload_api_keys()
     if not VIRUSTOTAL_API_KEY:
         return None, FONTE_SEM_CHAVE
-    return _consultar(f"https://www.virustotal.com/api/v3/files/{hash_str}",
+    return _consultar(URL_VT_ARQUIVO.format(hash_str),
                       fonte="VirusTotal", headers={"x-apikey": VIRUSTOTAL_API_KEY})
 
 
@@ -184,7 +212,7 @@ def check_url_virustotal(url):
     if not VIRUSTOTAL_API_KEY:
         return {"score": None, "not_found": False}, FONTE_SEM_CHAVE
     vt_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
-    dados, estado = _consultar(f"https://www.virustotal.com/api/v3/urls/{vt_id}",
+    dados, estado = _consultar(URL_VT_URL.format(vt_id),
                                fonte="VirusTotal",
                                headers={"x-apikey": VIRUSTOTAL_API_KEY,
                                         "Accept": "application/json"})
@@ -203,7 +231,7 @@ def _alienvault(tipo, indicador, link):
     if not ALIENVAULT_API_KEY:
         return None, link, FONTE_SEM_CHAVE
     dados, estado = _consultar(
-        f"https://otx.alienvault.com/api/v1/indicators/{tipo}/{indicador}/general",
+        URL_OTX.format(tipo, indicador),
         fonte="AlienVault",
         headers={"X-OTX-API-KEY": ALIENVAULT_API_KEY, "Accept": "application/json"})
     if estado == FONTE_SEM_DADOS:
@@ -223,7 +251,46 @@ def check_url_alienvault(url):
 
 def get_location(ip):
     reload_api_keys()
-    dados, estado = _consultar(f"https://ipinfo.io/{ip}/json?token={IPINFO_API_KEY}")
+    dados, estado = _consultar(URL_IPINFO.format(ip), fonte="IPinfo",
+                               params={"token": IPINFO_API_KEY})
     if estado != FONTE_OK:
         return "N/A", "N/A"
     return dados.get("city", "N/A"), traduzir_pais(dados.get("country", "N/A"))
+
+
+# 8.8.8.8 e publico, estavel e nao e dado de cliente: serve so para provar que a chave
+# passa e a fonte responde.
+IP_TESTE = "8.8.8.8"
+
+
+def _sondas(chaves):
+    """(nome_da_chave, fonte, url, cabecalhos, params) de uma consulta barata por fonte."""
+    return (
+        ("ABUSEIPDB_API_KEY", "AbuseIPDB", URL_ABUSEIPDB,
+         {"Accept": "application/json", "Key": chaves.get("ABUSEIPDB_API_KEY")},
+         {"ipAddress": IP_TESTE, "maxAgeInDays": 1}),
+        ("VIRUSTOTAL_API_KEY", "VirusTotal", URL_VT_IP.format(IP_TESTE),
+         {"x-apikey": chaves.get("VIRUSTOTAL_API_KEY")}, None),
+        ("IPINFO_API_KEY", "IPinfo", URL_IPINFO.format(IP_TESTE),
+         None, {"token": chaves.get("IPINFO_API_KEY")}),
+        ("ALIENVAULT_API_KEY", "AlienVault", URL_OTX.format("IPv4", IP_TESTE),
+         {"X-OTX-API-KEY": chaves.get("ALIENVAULT_API_KEY"), "Accept": "application/json"}, None),
+    )
+
+
+def testar_fontes(chaves=None):
+    """Testa cada chave contra a API de verdade. Devolve {nome_da_chave: estado}.
+
+    Aceita chaves ainda nao salvas para a tela de configuracao poder testar o que esta
+    digitado. Chave em branco nao e testada e nao aparece no resultado -- so o que o
+    usuario preencheu. Cada teste gasta uma requisicao da cota da fonte.
+    """
+    chaves = carregar_chaves_salvas() if chaves is None else chaves
+    resultados = {}
+    for nome, fonte, url, cabecalhos, params in _sondas(chaves):
+        if not (chaves.get(nome) or "").strip():
+            continue
+        _dados, estado = _consultar(url, fonte=fonte, headers=cabecalhos, params=params)
+        # 404 aqui prova o que interessa: a chave passou e a fonte respondeu.
+        resultados[nome] = FONTE_OK if estado == FONTE_SEM_DADOS else estado
+    return resultados

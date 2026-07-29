@@ -19,7 +19,7 @@ STRINGS = {
     "tab_domain": "Domain",
 
     # Buttons
-    "btn_copy": "Copy",
+    "btn_copy": "Copy results",
     "btn_export": "Export",
     "btn_cancel": "Cancel",
     "btn_check_ip": "Check IP",
@@ -185,6 +185,10 @@ STRINGS = {
     
     # Toggles
     "toggle_ibm": "IBM X-Force",
+    "section_input": "Input",
+    "section_sources": "Sources queried",
+    "section_report": "Report",
+    "section_results": "Results",
     "toggle_pre_analysis": "Pre-analysis",
     "toggle_has_mss": "Customer has MSS?",
 
@@ -207,6 +211,15 @@ STRINGS = {
     "cfg_show": "Show",
     "cfg_hide": "Hide",
     "cfg_get_key": "Get key",
+    "cfg_test": "Test connection",
+    "cfg_testing": "testing…",
+    "cfg_test_ok": "responded",
+    "cfg_test_rejected": "key rejected",
+    "cfg_test_none": "Fill in at least one key to test.",
+    "cfg_test_cost": "Each test spends one query from each API's quota.",
+    "quota_footer": "Quota left today",
+    "history_title": "Session history",
+    "history_empty": "This session's queries show up here. Nothing is written to disk.",
     "cfg_save": "Save",
     "cfg_cancel": "Cancel",
     "cfg_saved_title": "Keys saved",

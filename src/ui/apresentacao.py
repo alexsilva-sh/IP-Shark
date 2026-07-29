@@ -216,12 +216,13 @@ def linha_planilha_hash(data, com_ibm):
 
 
 def colunas_hash(data, com_ibm):
+    # O nome do arquivo vem logo depois do veredito: e a coluna mais larga e, no fim da
+    # linha, era a primeira a sair da tela em janela estreita.
     estados = data["estados"]
-    return (data["hash"], t(VERDICT_KEYS[data["status"]]),
+    return (data["hash"], t(VERDICT_KEYS[data["status"]]), nome_do_arquivo(data),
             coluna_fonte(data["vt_score"], estados.get("vt")),
             coluna_fonte(data["ibm_score"], estados.get("ibm")) if com_ibm else "-",
-            coluna_fonte(data["alien_score"], estados.get("alien")),
-            nome_do_arquivo(data))
+            coluna_fonte(data["alien_score"], estados.get("alien")))
 
 
 def relatorio_url(data, com_ibm=True, index=None, total=1):
