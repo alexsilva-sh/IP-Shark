@@ -5,50 +5,60 @@
 
 Ferramenta Python com interface gráfica para análise de reputação de IPs, hashes e domínios, integrando múltiplas fontes de inteligência de ameaças.
 
-O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, IPinfo e JoeSandbox, com execução paralela, exportação de resultados em Excel e geração de recomendações automáticas.
+O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, MetaDefender, IPinfo e JoeSandbox, com execução paralela, exportação de resultados em Excel e geração de recomendações automáticas.
 
 ---
 
 ## 🔍 Funcionalidades Principais
 
 ### ⚙ Personalizar pesquisa
-Cada aba tem um botão **Personalizar pesquisa** que abre a escolha das fontes consultadas. Fonte desmarcada não é consultada, some do relatório, da tabela e da planilha, e **não deixa o resultado incompleto** — o que separa desligar uma base de propósito de ela estar fora do ar. O atalho *Só as rápidas* deixa apenas as consultas por API, dispensando as que dependem de navegador (IBM X-Force e JoeSandbox). A escolha vale para a sessão e volta com tudo marcado ao reabrir o app.
+Cada aba tem um botão **Personalizar pesquisa** que abre a escolha das fontes consultadas. Fonte desmarcada não é consultada e some do relatório, da tabela e da planilha. Ela também não deixa o resultado incompleto, então dá para tirar da conta uma base que está fora do ar sem que isso contamine o veredito. O atalho *Só as rápidas* deixa apenas as consultas por API, dispensando as que dependem de navegador (IBM X-Force e JoeSandbox). A escolha vale para a sessão e volta com tudo marcado ao reabrir o app.
+
+### 🚦 Veredito honesto
+Cada fonte carrega o próprio estado, e o resultado diz o que aconteceu de verdade:
+- **Possui má reputação** quando alguma base que respondeu acusou o indicador.
+- **Análise incompleta** quando alguma fonte falhou ou estourou a cota. Fonte fora do ar nunca vira "limpo".
+- **Sem registros** quando nenhuma base conhece o indicador. Não é a mesma coisa que estar limpo.
+- **Revisar** quando o IP está na whitelist do AbuseIPDB mas foi acusado por outra base.
 
 ### ✅ Análise de IPs
 - **AbuseIPDB**: Score de abuso, data da última denúncia e detecção de whitelist.
 - **VirusTotal**: Verificação em múltiplos motores antivírus.
 - **IBM X-Force**: Score de risco (consulta automatizada via Selenium).
+- **MetaDefender**: Contagem de motores que acusaram o IP.
 - **IPinfo**: Localização do IP (cidade e país) com tradução automática do nome do país.
 - Execução paralela com até 10 IPs simultâneos e exibição ordenada dos resultados.
 - Exportação em **Excel (.xlsx)** com formatação profissional e links diretos para todas as plataformas.
-- Pré-análise automática que recomenda bloqueio ou reporte ao MSS.
+- Texto de análise automático que recomenda bloqueio ou reporte ao MSS.
 
 ### 🧪 Análise de Hashes (MD5, SHA1, SHA256)
 - **VirusTotal**: Score, nome do arquivo e data da última análise.
 - **IBM X-Force**: Nível de risco do hash.
-- **AlienVault**: Quantidade de pulsos de ameaça relacionados.
-- **JoeSandbox**: Veredito da execução em sandbox, taxa de AV, classificação, comportamento observado e links do laudo completo e do relatório de IOC. Só aparece no resultado quando há análise, e um veredito `Malicious` sustenta má reputação por si só.
+- **AlienVault**: Pulsos de ameaça, família de malware e grupo atribuído.
+- **MetaDefender**: Contagem de motores que acusaram o arquivo.
+- **JoeSandbox**: Veredito da execução em sandbox, taxa de AV, comportamento observado e links do laudo completo e do relatório de IOC. Só aparece no resultado quando há análise, e um veredito `Malicious` sustenta má reputação por si só.
 - Exportação em **Excel (.xlsx)** com todos os links.
-- Pré-análise com recomendações automáticas.
 
 ### 🌐 Análise de Domínios
 - **VirusTotal**: Score de reputação do domínio.
 - **IBM X-Force**: Score do domínio (via Selenium).
-- **AlienVault**: Quantidade de pulsos relacionados ao domínio.
+- **AlienVault**: Pulsos relacionados, família de malware e grupo atribuído.
+- **MetaDefender**: Contagem de motores que acusaram o domínio.
 - Resolução automática de IPs associados via DNS público do Google (`dns.google/resolve`) e `socket.gethostbyname_ex()`, com análise completa de cada IP resolvido.
 - Exportação em **Excel (.xlsx)** com abas separadas: uma para domínios e uma por domínio contendo os IPs associados.
-- Pré-análise automática com recomendações de bloqueio ou inspeção.
 
 ---
 
 ## ⚙️ Recursos Adicionais
-- Interface moderna com **modo escuro total** e chips de opção.
+- Resultados em tabela ordenável por qualquer coluna, com o detalhe da linha selecionada logo abaixo.
+- **Tema claro e escuro**, ajuste do tamanho da fonte e histórico das últimas varreduras para repetir uma consulta sem recolar os valores.
 - **Suporte a dois idiomas**: Português 🇧🇷 e Inglês 🇺🇸, alternável em tempo real.
+- Aviso quando a cota de uma API estoura, com estimativa de quando dá para repetir, e rodapé com a cota restante das fontes que informam esse número.
 - Execução paralela com status dinâmico das consultas em andamento.
 - Abas dedicadas para **IP**, **Hash** e **Domínio**.
-- Gerenciamento automático do ChromeDriver com pool de drivers e fechamento completo dos processos ao encerrar.
+- Gerenciamento automático do ChromeDriver com pool de drivers e fechamento completo dos processos ao encerrar. Se o Chrome não subir, a varredura segue com as fontes de API em vez de travar.
 - Verificação automática de nova versão no GitHub ao iniciar.
-- Tela própria para cadastrar as chaves de API, que ficam **criptografadas** na máquina do usuário.
+- Tela própria para cadastrar as chaves de API, que ficam **criptografadas** na máquina do usuário, com teste de conexão por serviço.
 - Entrada flexível: aceita vírgulas, espaços ou quebras de linha.
 - Resultados coloridos: 🔴 vermelho para reputação ruim, 🟡 âmbar para casos que exigem validação, 🟢 verde para limpo.
 
@@ -68,11 +78,15 @@ Se você vem de uma versão anterior à v3.1 e usava o `config/api.env`, suas ch
 importadas automaticamente na primeira execução. A tela de configuração também oferece apagar
 o arquivo antigo, que guardava tudo em texto puro e não é mais lido pelo programa.
 
+Nenhuma chave é obrigatória. A fonte sem chave cadastrada aparece como não configurada e as
+outras seguem normalmente.
+
 Obtenha suas chaves gratuitas nos links abaixo:
-- [VirusTotal](https://www.virustotal.com/gui/home/upload)
+- [VirusTotal](https://www.virustotal.com/gui/my-apikey)
 - [AbuseIPDB](https://www.abuseipdb.com/account/api)
-- [IPinfo](https://ipinfo.io/signup)
-- [AlienVault](https://otx.alienvault.com/api)
+- [IPinfo](https://ipinfo.io/account/token)
+- [AlienVault OTX](https://otx.alienvault.com/api)
+- [MetaDefender Cloud](https://metadefender.com/)
 
 ---
 
@@ -87,16 +101,16 @@ Obtenha suas chaves gratuitas nos links abaixo:
    - **Incluir Texto de Análise**: gera recomendação automática ao final da varredura.
    - **Incluir Texto de MSS**: ajusta o texto da recomendação para incluir reporte ao MSS.
 6. Clique em **🔍 Consultar** para iniciar.
-7. Os resultados aparecem na área de saída colorida e podem ser:
-   - **Copiados** para a área de transferência;
-   - **Exportados** para Excel (.xlsx) com formatação profissional;
-   - **Cancelados** a qualquer momento com o botão ❌ Cancelar.
+7. Os resultados aparecem na tabela, e clicar numa linha abre o relatório completo dela embaixo. A partir daí você pode:
+   - **Copiar** tudo para a área de transferência;
+   - **Exportar** para Excel (.xlsx) com formatação profissional;
+   - **Cancelar** a varredura a qualquer momento com o botão ❌ Cancelar, ou com Esc.
 
 ---
 
 ## 🛠 Desenvolvimento
 
-Ambos os scripts criam e reutilizam uma venv em `.venv/` automaticamente — não é preciso
+Ambos os scripts criam e reutilizam uma venv em `.venv/` automaticamente, então não é preciso
 preparar nada antes.
 
 ```bat
