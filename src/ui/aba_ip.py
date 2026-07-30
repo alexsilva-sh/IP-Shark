@@ -19,9 +19,11 @@ from core.navegador import check_ip_ibm
 from core.reputacao import build_ip_result, get_domain_from_abuseipdb, is_valid_ip
 from i18n import plural, t
 from services.exportacao import salvar_planilha
+from ui import fontes as fontes_catalogo
 from ui import tema
 from ui.apresentacao import (
     aviso_de_cota,
+    cabecalho_planilha_ip,
     colunas_ip,
     contar_ips,
     dividir_entrada,
@@ -29,6 +31,7 @@ from ui.apresentacao import (
     linha_planilha_ip,
     relatorio_ip,
 )
+from ui.dialogo_fontes import DialogoFontes
 from ui.widgets import Botao, Chip
 
 _log = log.obter("aba_ip")
@@ -39,7 +42,8 @@ class AbaIP:
     _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
 
     def _montar_aba_ip(self):
-        self.ibm_ip_ativo = True
+        self.fontes_ip = fontes_catalogo.todas("ip")
+        self.fontes_ip_varredura = set(self.fontes_ip)
         self.results_ip = []
         self.scanning_ip = False
         self.currently_processing = set()
@@ -62,10 +66,13 @@ class AbaIP:
         self.check_button, fontes, relatorio = self._montar_opcoes(
             self.page_ip, "btn_check_ip", self.run_check)
 
-        self.ibm_var_ip = tk.BooleanVar(value=True)
-        self.toggle_ibm_ip = Chip(fontes, text=t("toggle_ibm"), variable=self.ibm_var_ip)
-        self.toggle_ibm_ip.pack(side="left")
-        self._register_i18n(self.toggle_ibm_ip, "toggle_ibm")
+        self.botao_fontes_ip = Botao(fontes, text=t("btn_customize"),
+                                     command=self.abrir_fontes_ip)
+        self.botao_fontes_ip.pack(side="left")
+        self._register_i18n(self.botao_fontes_ip, "btn_customize")
+        self.resumo_fontes_ip = tk.Label(fontes, bg=tema.FUNDO_PAINEL,
+                                         fg=tema.TEXTO_SECUNDARIO, font=tema.fonte("menor"))
+        self.resumo_fontes_ip.pack(side="left", padx=(tema.E2, 0))
 
         self.pre_var_ip = tk.BooleanVar(value=False)
         self.toggle_pre_ip = Chip(relatorio, text=t("toggle_pre_analysis"),
@@ -112,6 +119,14 @@ class AbaIP:
     def show_ip_page(self):
         self._mostrar_pagina("ip")
 
+    def abrir_fontes_ip(self):
+        DialogoFontes(self.root, "ip", self.fontes_ip, self._aplicar_fontes_ip)
+
+    def _aplicar_fontes_ip(self, escolhidas):
+        self.fontes_ip = escolhidas
+        self.resumo_fontes_ip.config(text=self._resumo_fontes("ip", escolhidas))
+        self.tabela_ip.ocultar_colunas(fontes_catalogo.colunas_ocultas("ip", escolhidas))
+
     def _update_mss_state_ip(self, *args):
         self.mss_ip_switch.set_state("normal" if self.pre_var_ip.get() else "disabled")
 
@@ -143,7 +158,9 @@ class AbaIP:
         self.registrar_historico("ip", self.entry.get_text(), len(ips))
         self.results_ip = []
         self.scanning_ip = True
-        self.ibm_ip_ativo = self.ibm_var_ip.get()
+        # Congela a escolha: mexer no modal durante a varredura desalinharia a planilha, que
+        # so e montada no fim.
+        self.fontes_ip_varredura = set(self.fontes_ip)
         self.total_ip, self.feitos_ip = len(ips), 0
         self.check_button.config(state="disabled")
         self._update_action_buttons()
@@ -196,24 +213,28 @@ class AbaIP:
             self._ui(self._scan_stopped_ip)
 
     def _consultar_ip(self, index, ip, total):
+        """Fonte desmarcada nao e consultada e chega ao nucleo com estado None."""
+        fontes = self.fontes_ip_varredura
         if self.stop_flag:
             return None
         self._track_processing(self.currently_processing, ip, True, self.update_status_label)
         if self.stop_flag:
             return None
-        abuseipdb_result, estado_abuse = check_ip_abuseipdb(ip)
+        abuseipdb_result, estado_abuse = (
+            check_ip_abuseipdb(ip) if "abuse" in fontes else (None, None))
         if self.stop_flag:
             return None
-        virustotal_result, estado_vt = check_ip_virustotal(ip)
+        virustotal_result, estado_vt = (
+            check_ip_virustotal(ip) if "vt" in fontes else (None, None))
         if self.stop_flag:
             return None
-        md, estado_md = check_ip_metadefender(ip)
+        md, estado_md = check_ip_metadefender(ip) if "md" in fontes else (None, None)
         if self.stop_flag:
             return None
-        city, country = get_location(ip)
+        city, country = get_location(ip) if "local" in fontes else ("-", "-")
         domain = get_domain_from_abuseipdb(abuseipdb_result)
-        ibm_score, estado_ibm = None, api.FONTE_OK
-        if self.ibm_ip_ativo and not self.stop_flag:
+        ibm_score, estado_ibm = None, None
+        if "ibm" in fontes and not self.stop_flag:
             ibm_score, estado_ibm = self._consultar_ibm(lambda d, alvo: check_ip_ibm(d, alvo)[1], ip)
         if self.stop_flag:
             return None
@@ -231,9 +252,9 @@ class AbaIP:
             md=md,
             estado_md=estado_md,
         )
-        return (index, linha_planilha_ip(data, self.ibm_ip_ativo),
-                relatorio_ip(data, index=index, total=total), ip, data["status"],
-                colunas_ip(data, data["country"] or "-"), data)
+        return (index, linha_planilha_ip(data, fontes),
+                relatorio_ip(data, index=index, total=total, fontes=fontes), ip, data["status"],
+                colunas_ip(data, data["country"] or "-", fontes), data)
 
     def append_ip_results(self, resultados):
         for index, csv_data, terminal_output, ip, status, colunas, data in resultados:
@@ -316,15 +337,7 @@ class AbaIP:
         if not self.results_ip:
             messagebox.showwarning(t("done"), t("no_results"))
             return
-        headers = [
-            t("csv_ip"), t("csv_verdict"), t("csv_abuse_score"), t("csv_vt_score"),
-            *([t("csv_ibm_score")] if self.ibm_ip_ativo else []),
-            t("csv_md_score"),
-            t("csv_domain"), t("csv_country"), t("csv_city"), t("csv_last_report"),
-            t("csv_abuse_link"), t("csv_vt_link"),
-            *([t("csv_ibm_link")] if self.ibm_ip_ativo else []),
-            t("csv_md_link"),
-        ]
+        headers = cabecalho_planilha_ip(self.fontes_ip_varredura)
         salvar_planilha(self.results_ip, headers, filename="ip_results.xlsx",
                         parent=self.root, titulo=t("select_folder"), coluna_veredito=2,
                         aba=t("csv_sheet_results"))

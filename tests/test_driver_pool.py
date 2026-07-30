@@ -160,13 +160,13 @@ app = gui.IPCheckerApp(root)
 gui.app = app
 app.driver_pool.boot_concluido.set()      # boot terminou sem nenhum driver
 
-app.ibm_hash_ativo = True
+app.fontes_hash_varredura = {"vt", "alien", "md", "ibm", "joe"}
 app.results_hash = []
 chamou_ibm = []
 aba_hash.check_hash_ibm = lambda d, h: chamou_ibm.append(h)
 aba_hash.check_hash_alienvault = lambda h: (core._otx_contexto({}), "link", core.FONTE_OK)
 aba_hash.check_hash_virustotal = lambda h: (None, core.FONTE_INDISPONIVEL)
-aba_hash.check_hash_joesandbox = lambda d, h: (False, "link")
+aba_hash.check_hash_joesandbox = lambda d, h: (None, "link")
 bloquear_rede(core)   # se algum mock vazar, a chamada real estoura aqui
 
 inicio = time.time()

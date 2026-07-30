@@ -11,6 +11,9 @@ O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, 
 
 ## 🔍 Funcionalidades Principais
 
+### ⚙ Personalizar pesquisa
+Cada aba tem um botão **Personalizar pesquisa** que abre a escolha das fontes consultadas. Fonte desmarcada não é consultada, some do relatório, da tabela e da planilha, e **não deixa o resultado incompleto** — o que separa desligar uma base de propósito de ela estar fora do ar. O atalho *Só as rápidas* deixa apenas as consultas por API, dispensando as que dependem de navegador (IBM X-Force e JoeSandbox). A escolha vale para a sessão e volta com tudo marcado ao reabrir o app.
+
 ### ✅ Análise de IPs
 - **AbuseIPDB**: Score de abuso, data da última denúncia e detecção de whitelist.
 - **VirusTotal**: Verificação em múltiplos motores antivírus.
@@ -24,7 +27,7 @@ O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, 
 - **VirusTotal**: Score, nome do arquivo e data da última análise.
 - **IBM X-Force**: Nível de risco do hash.
 - **AlienVault**: Quantidade de pulsos de ameaça relacionados.
-- **JoeSandbox**: Detecção de relatórios de sandbox disponíveis.
+- **JoeSandbox**: Veredito da execução em sandbox, taxa de AV, classificação, comportamento observado e links do laudo completo e do relatório de IOC. Só aparece no resultado quando há análise, e um veredito `Malicious` sustenta má reputação por si só.
 - Exportação em **Excel (.xlsx)** com todos os links.
 - Pré-análise com recomendações automáticas.
 
@@ -39,7 +42,7 @@ O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, 
 ---
 
 ## ⚙️ Recursos Adicionais
-- Interface moderna com **modo escuro total** e toggle switches animados.
+- Interface moderna com **modo escuro total** e chips de opção.
 - **Suporte a dois idiomas**: Português 🇧🇷 e Inglês 🇺🇸, alternável em tempo real.
 - Execução paralela com status dinâmico das consultas em andamento.
 - Abas dedicadas para **IP**, **Hash** e **Domínio**.
@@ -79,11 +82,10 @@ Obtenha suas chaves gratuitas nos links abaixo:
 2. Selecione o idioma desejado: 🇧🇷 PT ou 🇺🇸 EN.
 3. Escolha a aba **IP**, **Hash** ou **Domínio**.
 4. Cole os valores a serem consultados (separados por vírgula, espaço ou quebra de linha).
-5. Configure as opções com os toggles disponíveis:
-   - **IBM X-Force**: ativa/desativa a consulta ao IBM X-Force.
-   - **Pré-análise**: gera recomendação automática ao final da varredura.
-   - **Cliente tem MSS?**: ajusta o texto da recomendação para incluir reporte ao MSS.
-   - **Verificar IPs associados** *(somente aba Domínio)*: resolve e analisa os IPs de cada domínio.
+5. Configure as opções:
+   - **⚙ Personalizar pesquisa**: escolhe quais fontes serão consultadas, incluindo a resolução dos IPs associados na aba Domínio.
+   - **Incluir Texto de Análise**: gera recomendação automática ao final da varredura.
+   - **Incluir Texto de MSS**: ajusta o texto da recomendação para incluir reporte ao MSS.
 6. Clique em **🔍 Consultar** para iniciar.
 7. Os resultados aparecem na área de saída colorida e podem ser:
    - **Copiados** para a área de transferência;

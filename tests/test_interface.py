@@ -174,7 +174,7 @@ for nome, widget in inertes:
           f"clique em {nome} desfaz a selecao e mostra o aviso")
 
 # Quem trata o proprio clique fica de fora: perder a selecao ali atrapalharia.
-for nome, widget in (("botao", app.copy_button), ("chip", app.toggle_ibm_ip),
+for nome, widget in (("botao", app.copy_button), ("chip", app.toggle_pre_ip),
                      ("painel de detalhe", tabela_ip.detalhe), ("tabela", tabela_ip.tree)):
     check(not clicar_em(widget) and tabela_ip.tree.selection() == ("ip-2",),
           f"clique em {nome} preserva a selecao")
@@ -278,7 +278,6 @@ from ui import aba_ip, janela_atualizacao
 pedidos = []
 exportacao.filedialog.askdirectory = lambda **kw: pedidos.append(kw) or "C:\\saida"
 app.results_ip = [["1.1.1.1", "0%", 0]]
-app.ibm_ip_ativo = False
 aba_ip.salvar_planilha = lambda *a, **kw: exportacao.escolher_diretorio(kw.get("parent"), kw.get("titulo"))
 app.save_results()
 check(len(pedidos) == 1, "o dialogo de pasta abriu")
@@ -428,13 +427,13 @@ app.scanning_ip = False
 print("\n[22] Chips de opcao no lugar dos interruptores")
 from ui.widgets import Cartao, Chip
 
-chip = app.toggle_ibm_ip
+chip = app.toggle_pre_ip
 check(isinstance(chip, Chip), "a opcao virou chip")
-estado_inicial = app.ibm_var_ip.get()
+estado_inicial = app.pre_var_ip.get()
 chip._alternar()
-check(app.ibm_var_ip.get() != estado_inicial, "clicar no chip alterna a variavel")
+check(app.pre_var_ip.get() != estado_inicial, "clicar no chip alterna a variavel")
 chip._alternar()
-check(app.ibm_var_ip.get() == estado_inicial, "e alterna de volta")
+check(app.pre_var_ip.get() == estado_inicial, "e alterna de volta")
 
 app.pre_var_ip.set(False)
 app._update_mss_state_ip()

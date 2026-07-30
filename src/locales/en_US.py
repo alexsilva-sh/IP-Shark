@@ -31,10 +31,6 @@ STRINGS = {
     "paste_hashes": "Paste hashes below:",
     "paste_domains": "Paste domains below:",
 
-    # Toggles
-    "pre_analysis": "Pre-analysis",
-    "has_mss": "Customer has MSS?",
-
     # Status
     "checking_ips": "Checking IPs",
     "checking_hashes": "Checking hashes",
@@ -119,14 +115,41 @@ STRINGS = {
     "count_pulses": "pulses",
     "otx_family": "Malware family",
     "otx_adversary": "Attributed group",
-    "otx_mitre": "MITRE ATT&CK techniques",
     "otx_pulses": "Reported as",
     "otx_known_good": "Listed as known good on OTX",
 
     # Hash details
     "file_name": "File name",
     "last_analysis_vt": "Last analysis on VirusTotal",
-    "joesandbox_found": "JOESandbox report found",
+
+    # JoeSandbox
+    "joe_score": "JoeSandbox",
+    "joe_verdict_malicious": "Malicious",
+    "joe_verdict_suspicious": "Suspicious",
+    "joe_verdict_clean": "Clean",
+    "joe_av": "AV {pct}%",
+    "joe_count_one": "{n} analysis",
+    "joe_count_many": "{n} analyses",
+    "joe_count_verdict": "{n} with this verdict",
+    "joe_class_evad": "Evader",
+    "joe_behavior": "Observed behavior",
+    "joe_malwareconfig": (
+        "Malware configuration extracted by the sandbox (C2 identified)"
+    ),
+    "joe_flag_malwareconfig": "contains malware configuration",
+    "joe_flag_injects": "injects code into processes",
+    "joe_flag_drops_pe": "drops executables to disk",
+    "joe_flag_creates_files": "creates malicious files",
+    "joe_flag_registry": "writes registry keys",
+    "joe_flag_http": "generates HTTP traffic",
+    "joe_flag_traffic": "generates network traffic",
+    "joe_flag_processes": "spawns multiple processes",
+    "joe_flag_email": "contains email attachment",
+    "joe_flag_native_cmd": "runs native commands",
+    "joe_flag_sends_sms": "sends SMS",
+    "joe_flag_recv_sms": "receives SMS",
+    "joe_flag_reboot": "reboots the device",
+    "joe_flag_expired": "expired sample",
 
     # IP analysis
     "ip_bad_mss_one": (
@@ -192,13 +215,36 @@ STRINGS = {
     "last_report_label": "Last report on AbuseIPDB",
     
     # Toggles
-    "toggle_ibm": "IBM X-Force",
     "section_input": "Input",
     "section_sources": "Sources queried",
     "section_report": "Report",
     "section_results": "Results",
-    "toggle_pre_analysis": "Pre-analysis",
-    "toggle_has_mss": "Customer has MSS?",
+    "toggle_pre_analysis": "Include analysis text",
+    "toggle_has_mss": "Include MSS text",
+
+    # Customize search
+    "btn_customize": "⚙ Customize search",
+    "src_title": "Sources queried",
+    "src_intro": (
+        "Uncheck what you don't want to query. An unchecked source is not queried and does "
+        "not leave the result incomplete — useful when a source is down, or when there is "
+        "no time to wait for the browser-based lookups."
+    ),
+    "src_fast": "API",
+    "src_slow": "browser, slower",
+    "src_all": "Check all",
+    "src_only_fast": "Fast ones only",
+    "src_apply": "Apply",
+    "src_none": "Keep at least one source checked.",
+    "src_summary_off": "without {fontes}",
+    "source_abuse": "AbuseIPDB",
+    "source_vt": "VirusTotal",
+    "source_md": "MetaDefender",
+    "source_alien": "AlienVault",
+    "source_ipinfo": "IPinfo (location)",
+    "source_ibm": "IBM X-Force",
+    "source_joe": "JoeSandbox",
+    "source_assoc_ips": "IPs associated with the domain",
 
     # Config
     "btn_config_api": "🗝 Configure API",
@@ -270,6 +316,9 @@ STRINGS = {
     "csv_alien_link": "AlienVault link",
     "csv_md_link": "MetaDefender link",
     "csv_joe_link": "JoeSandbox link",
+    "csv_joe_verdict": "JoeSandbox verdict",
+    "csv_joe_class": "JoeSandbox classification",
+    "csv_joe_behavior": "JoeSandbox behavior",
     # Results table
     "col_verdict": "Verdict",
     "col_abuse": "AbuseIPDB",
@@ -277,6 +326,7 @@ STRINGS = {
     "col_ibm": "X-Force",
     "col_alien": "AlienVault",
     "col_md": "MetaDefender",
+    "col_joe": "JoeSandbox",
     "col_country": "Country",
     "col_file": "File",
     "verdict_clean": "● Clean",
@@ -332,7 +382,6 @@ STRINGS = {
     "progress_done": "{feitos}/{total}",
     "associated_to_domain": "associated with domain",
 
-    "toggle_check_ips":"Check associated IPs",
     "csv_sheet_results": "Results",
     "csv_sheet_domains": "Domains",
     "csv_sheet_ips_prefix": "IPs - ",

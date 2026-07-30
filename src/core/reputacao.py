@@ -89,13 +89,19 @@ def _fontes_indisponiveis(pares):
     return [nome for nome, estado in pares if estado in ESTADOS_SEM_RESPOSTA]
 
 
-# Nao ha pagina publica por indicador para IP e dominio; o portal e o que da para oferecer.
-LINK_MD = "https://my.opswat.com/portal/metadefender-cloud"
+# Nao ha pagina publica por indicador para IP e dominio; a busca de ameacas e o que da para
+# oferecer.
+LINK_MD = "https://metadefender.com/threat-intelligence"
 
 
 def md_detectou(md, estado_md):
     """Contagem de quem acusou, nao de quem mencionou -- por isso decide veredito."""
     return estado_md == FONTE_OK and (safe_get(md, "detectados") or 0) > 0
+
+
+def joe_detectou(joe):
+    """So agrava: 'Clean' do sandbox nao sustenta limpo nem entra em _sem_registro."""
+    return bool(joe) and joe.get("veredito") == "malicious"
 
 
 def _sem_registro(estados):
@@ -183,7 +189,7 @@ def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
     }
 
 
-def build_hash_result(hash_str, virustotal_result, ibm_score, alien, joe_found=False,
+def build_hash_result(hash_str, virustotal_result, ibm_score, alien, joe=None,
                       estado_vt=FONTE_OK, estado_ibm=None, estado_alien=FONTE_OK,
                       md=None, estado_md=None):
     """Veredito de um hash. `estado_ibm=None` significa X-Force nao consultado."""
@@ -202,6 +208,7 @@ def build_hash_result(hash_str, virustotal_result, ibm_score, alien, joe_found=F
         (vt_score or 0) > 0
         or (estado_ibm == FONTE_OK and str(ibm_score).strip().lower() in ("high", "medium"))
         or md_detectou(md, estado_md)
+        or joe_detectou(joe)
     )
     fontes = _fontes_indisponiveis((("VirusTotal", estado_vt), ("AlienVault", estado_alien),
                                     ("IBM X-Force", estado_ibm), ("MetaDefender", estado_md)))
@@ -213,7 +220,7 @@ def build_hash_result(hash_str, virustotal_result, ibm_score, alien, joe_found=F
         "md": md,
         "nome_arquivo": nome_arquivo,
         "ultima_analise": ultima_analise,
-        "joe_found": joe_found,
+        "joe": joe,
         "estados": {"vt": estado_vt, "alien": estado_alien, "ibm": estado_ibm, "md": estado_md},
         "fontes_indisponiveis": fontes,
         "status": _veredito(malicioso, fontes, (estado_vt, estado_ibm, estado_md)),
@@ -221,7 +228,7 @@ def build_hash_result(hash_str, virustotal_result, ibm_score, alien, joe_found=F
             "vt": f"https://www.virustotal.com/gui/file/{hash_str}",
             "ibm": f"https://exchange.xforce.ibmcloud.com/malware/{hash_str}",
             "alien": f"https://otx.alienvault.com/indicator/file/{hash_str}",
-            "joe": f"https://www.joesandbox.com/analysis/search?q={hash_str}",
+            "joe": (joe or {}).get("link_html"),
             "md": LINK_MD if estado_md else None,
         },
     }

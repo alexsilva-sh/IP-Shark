@@ -8,6 +8,7 @@ import preferencias
 from core import api
 from core.reputacao import classificar_ibm
 from i18n import t
+from ui import fontes as fontes_catalogo
 from ui import tema
 from ui.aba_hash import AbaHash
 from ui.aba_ip import AbaIP
@@ -15,7 +16,7 @@ from ui.aba_url import AbaURL
 from ui.navegadores import DriverIndisponivel, DriverPool
 from ui.widgets import Botao, Cartao, Chip, MultilineInput, ResultTable, RotuloSecao
 
-VERSAO = "v3.1"
+VERSAO = "v4.0"
 
 _log = log.obter("app")
 
@@ -26,6 +27,8 @@ def _copiar(valor):
         return {chave: list(item) for chave, item in valor.items()}
     if isinstance(valor, list):
         return list(valor)
+    if isinstance(valor, set):
+        return set(valor)
     return valor
 
 
@@ -162,9 +165,9 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
 
     # Alem da tabela, o que Copiar e Exportar precisam de volta.
     ESTADO_DA_ABA = {
-        "ip": ("results_ip", "ibm_ip_ativo"),
-        "hash": ("results_hash", "ibm_hash_ativo"),
-        "url": ("results_url", "ip_results_by_domain", "ibm_url_ativo"),
+        "ip": ("results_ip", "fontes_ip_varredura"),
+        "hash": ("results_hash", "fontes_hash_varredura"),
+        "url": ("results_url", "ip_results_by_domain", "fontes_url_varredura"),
     }
 
     def registrar_historico(self, aba, texto, quantidade):
@@ -367,6 +370,14 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
             linha.pack(anchor="w")
             linhas.append(linha)
         return botao, linhas[0], linhas[1]
+
+    def _resumo_fontes(self, aba, ativas):
+        """Etiqueta ao lado do botao: nomeia o que ficou de fora, ou nada quando esta tudo."""
+        desligadas = fontes_catalogo.desligadas(aba, ativas)
+        if not desligadas:
+            return ""
+        nomes = ", ".join(t(fontes_catalogo.rotulo(aba, chave)) for chave in desligadas)
+        return t("src_summary_off").format(fontes=nomes)
 
     def _montar_resultados(self, pagina, colunas):
         """Cartao de resultados: progresso, status e tabela no mesmo bloco.

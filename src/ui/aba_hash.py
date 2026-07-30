@@ -11,9 +11,11 @@ from core.navegador import check_hash_ibm, check_hash_joesandbox
 from core.reputacao import build_hash_result
 from i18n import plural, t
 from services.exportacao import salvar_planilha
+from ui import fontes as fontes_catalogo
 from ui import tema
 from ui.apresentacao import (
     aviso_de_cota,
+    cabecalho_planilha_hash,
     colunas_hash,
     contar_hashes,
     dividir_entrada,
@@ -21,6 +23,7 @@ from ui.apresentacao import (
     linha_planilha_hash,
     relatorio_hash,
 )
+from ui.dialogo_fontes import DialogoFontes
 from ui.navegadores import DriverIndisponivel
 from ui.widgets import Botao, Chip
 
@@ -30,7 +33,8 @@ class AbaHash:
     _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
 
     def _montar_aba_hash(self):
-        self.ibm_hash_ativo = True
+        self.fontes_hash = fontes_catalogo.todas("hash")
+        self.fontes_hash_varredura = set(self.fontes_hash)
         self.results_hash = []
         self.scanning_hash = False
         self.currently_processing_hashes = set()
@@ -52,10 +56,13 @@ class AbaHash:
         self.hash_button_action, fontes, relatorio = self._montar_opcoes(
             self.page_hash, "btn_check_hash", self.run_hash_check)
 
-        self.ibm_var_hash = tk.BooleanVar(value=True)
-        self.toggle_ibm_hash = Chip(fontes, text=t("toggle_ibm"), variable=self.ibm_var_hash)
-        self.toggle_ibm_hash.pack(side="left")
-        self._register_i18n(self.toggle_ibm_hash, "toggle_ibm")
+        self.botao_fontes_hash = Botao(fontes, text=t("btn_customize"),
+                                       command=self.abrir_fontes_hash)
+        self.botao_fontes_hash.pack(side="left")
+        self._register_i18n(self.botao_fontes_hash, "btn_customize")
+        self.resumo_fontes_hash = tk.Label(fontes, bg=tema.FUNDO_PAINEL,
+                                           fg=tema.TEXTO_SECUNDARIO, font=tema.fonte("menor"))
+        self.resumo_fontes_hash.pack(side="left", padx=(tema.E2, 0))
 
         self.pre_var_hash = tk.BooleanVar(value=False)
         self.toggle_pre_hash = Chip(relatorio, text=t("toggle_pre_analysis"),
@@ -84,6 +91,7 @@ class AbaHash:
             ("ibm", "col_ibm", 85, "center"),
             ("alien", "col_alien", 110, "center"),
             ("md", "col_md", 120, "center"),
+            ("joe", "col_joe", 110, "center"),
         ])
 
         self.hash_copy_button = Botao(self.hash_button_frame, text=t("btn_copy"),
@@ -101,6 +109,14 @@ class AbaHash:
 
     def show_hash_page(self):
         self._mostrar_pagina("hash")
+
+    def abrir_fontes_hash(self):
+        DialogoFontes(self.root, "hash", self.fontes_hash, self._aplicar_fontes_hash)
+
+    def _aplicar_fontes_hash(self, escolhidas):
+        self.fontes_hash = escolhidas
+        self.resumo_fontes_hash.config(text=self._resumo_fontes("hash", escolhidas))
+        self.tabela_hash.ocultar_colunas(fontes_catalogo.colunas_ocultas("hash", escolhidas))
 
     def _update_mss_state_hash(self, *args):
         self.mss_hash_switch.set_state("normal" if self.pre_var_hash.get() else "disabled")
@@ -131,7 +147,7 @@ class AbaHash:
         self.currently_processing_hashes.clear()
         self.hash_status_label.config(text="")
         self.scanning_hash = True
-        self.ibm_hash_ativo = self.ibm_var_hash.get()
+        self.fontes_hash_varredura = set(self.fontes_hash)
         self.total_hash, self.feitos_hash = len(hash_list), 0
         self.hash_button_action.config(state="disabled")
         self._update_action_buttons()
@@ -166,29 +182,34 @@ class AbaHash:
             self._ui(self._scan_stopped_hash)
 
     def process_hash(self, h, index, total_hashes=1):
-        com_ibm = self.ibm_hash_ativo
+        """Fonte desmarcada nao e consultada e chega ao nucleo com estado None."""
+        fontes = self.fontes_hash_varredura
         ibm_score, estado_ibm = "-", None
-        if com_ibm:
+        if "ibm" in fontes:
             ibm_score, estado_ibm = self._consultar_ibm(
                 lambda d, alvo: check_hash_ibm(d, alvo)[1], h)
 
-        alien, _alien_link, estado_alien = check_hash_alienvault(h)
-        virustotal_result, estado_vt = check_hash_virustotal(h)
-        md, estado_md = check_hash_metadefender(h)
+        alien, estado_alien = None, None
+        if "alien" in fontes:
+            alien, _alien_link, estado_alien = check_hash_alienvault(h)
+        virustotal_result, estado_vt = (
+            check_hash_virustotal(h) if "vt" in fontes else (None, None))
+        md, estado_md = check_hash_metadefender(h) if "md" in fontes else (None, None)
 
-        joe_found = False
-        try:
-            with self.driver_pool.emprestar() as driver:
-                joe_found, _joe_link = check_hash_joesandbox(driver, h)
-        except DriverIndisponivel:
-            pass
+        joe = None
+        if "joe" in fontes:
+            try:
+                with self.driver_pool.emprestar() as driver:
+                    joe, _joe_link = check_hash_joesandbox(driver, h)
+            except DriverIndisponivel:
+                pass
 
-        data = build_hash_result(h, virustotal_result, ibm_score, alien, joe_found,
+        data = build_hash_result(h, virustotal_result, ibm_score, alien, joe,
                                  estado_vt=estado_vt, estado_ibm=estado_ibm,
                                  estado_alien=estado_alien, md=md, estado_md=estado_md)
-        self.results_hash.append(linha_planilha_hash(data, com_ibm))
-        return (relatorio_hash(data, com_ibm, index=index, total=total_hashes),
-                data["status"], colunas_hash(data, com_ibm), data["estados"])
+        self.results_hash.append(linha_planilha_hash(data, fontes))
+        return (relatorio_hash(data, fontes, index=index, total=total_hashes),
+                data["status"], colunas_hash(data, fontes), data["estados"])
 
     def _linha_hash(self, indice, colunas, texto, status):
         self.tabela_hash.add(f"hash-{indice}", colunas, texto, status)
@@ -249,14 +270,7 @@ class AbaHash:
         if not self.results_hash:
             messagebox.showwarning(t("done"), t("no_results"))
             return
-        headers = [
-            t("csv_hash"), t("csv_verdict"), t("csv_vt_score"),
-            *([t("csv_ibm_score")] if self.ibm_hash_ativo else []),
-            t("csv_alien_score"), t("csv_md_score"),
-            t("csv_file_name"), t("csv_last_analysis"), t("csv_vt_link"),
-            *([t("csv_ibm_link")] if self.ibm_hash_ativo else []),
-            t("csv_alien_link"), t("csv_md_link"), t("csv_joe_link"),
-        ]
+        headers = cabecalho_planilha_hash(self.fontes_hash_varredura)
         salvar_planilha(self.results_hash, headers, filename="hash_results.xlsx",
                         parent=self.root, titulo=t("select_folder"), coluna_veredito=2,
                         aba=t("csv_sheet_results"))

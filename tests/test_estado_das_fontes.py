@@ -17,6 +17,10 @@ import app as gui
 from core import navegador, reputacao
 from i18n import t
 from ui import apresentacao, tema
+from ui import fontes as catalogo
+
+TODAS = {aba: catalogo.todas(aba) for aba in ("ip", "hash", "url")}
+SEM_IBM = {aba: fontes - {"ibm"} for aba, fontes in TODAS.items()}
 
 gui.IPCheckerApp._init_drivers_async = lambda self, count=3: None
 
@@ -251,9 +255,9 @@ check(h_sem_registro["estados"]["vt"] == core.FONTE_SEM_DADOS,
       "200 sem atributos -> sem dados")
 check(h_sem_registro["status"] == "sem_registros",
       "nenhuma base conhece o hash -> 'Sem registros', NAO 'Limpo'")
-check(apresentacao.colunas_hash(h_sem_registro, com_ibm=False)[1] == t("verdict_no_records"),
+check(apresentacao.colunas_hash(h_sem_registro, SEM_IBM["hash"])[1] == t("verdict_no_records"),
       "a coluna de veredito diz o mesmo que o cabecalho do relatorio")
-check(t("no_records") in apresentacao.relatorio_hash(h_sem_registro, com_ibm=False).splitlines()[0],
+check(t("no_records") in apresentacao.relatorio_hash(h_sem_registro, SEM_IBM["hash"]).splitlines()[0],
       "e o relatorio nao afirma que o arquivo e legitimo")
 check(apresentacao.VERDICT_TAGS["sem_registros"] != apresentacao.VERDICT_TAGS["clean"],
       "na tabela nao sai em verde de limpo")
@@ -268,14 +272,16 @@ SEM = core.FONTE_SEM_DADOS
 for nome, data, colunas in (
     ("IP", reputacao.build_ip_result("1.2.3.4", None, None, None, "c", "p", "d",
                                      estado_abuse=SEM, estado_vt=SEM, estado_ibm=SEM,
-                                     estado_md=SEM), apresentacao.colunas_ip),
+                                     estado_md=SEM),
+     lambda d: apresentacao.colunas_ip(d, "-", TODAS["ip"])),
     ("hash", reputacao.build_hash_result("a" * 40, {}, "-", OTX_ZERO, estado_ibm=SEM,
-                                        estado_md=SEM), apresentacao.colunas_hash),
+                                        estado_md=SEM),
+     lambda d: apresentacao.colunas_hash(d, TODAS["hash"])),
     ("dominio", reputacao.build_url_result("nunca-vista.com", None, "-", OTX_ZERO,
                                           estado_vt=SEM, estado_ibm=SEM, estado_md=SEM),
-     apresentacao.colunas_url),
+     lambda d: apresentacao.colunas_url(d, TODAS["url"])),
 ):
-    check(data["status"] == "sem_registros" and colunas(data, "-")[1] == t("verdict_no_records"),
+    check(data["status"] == "sem_registros" and colunas(data)[1] == t("verdict_no_records"),
           f"a regra vale para {nome}, nao so para hash")
 
 u_limpo = reputacao.build_url_result("exemplo.com", 0, "-", OTX_ZERO)
@@ -445,7 +451,7 @@ alien, _link, estado = core.check_hash_alienvault("a" * 32)
 check(alien["familias"] == ["Qakbot", "Cobalt Strike"],
       f"familia sai tanto de texto quanto de objeto, sem repetir ({alien['familias']})")
 check(alien["adversarios"] == ["TA577"], "grupo atribuido entra no resultado")
-check(alien["tecnicas"] == ["T1204 - User Execution"], "tecnica MITRE tambem")
+check("tecnicas" not in alien, "tecnica MITRE nao e mais coletada")
 check(alien["titulo"] == "Campanha TA577",
       f"vale o relato que informa, nao o mais recente ({alien['titulo']!r})")
 
@@ -554,29 +560,29 @@ app.bad_ips = set()
 app.mss_var_ip.set(False)
 
 print("\n[11] Exportacao tambem nao mente")
-linha = apresentacao.linha_planilha_ip(abuse_fora, com_ibm=False)
+linha = apresentacao.linha_planilha_ip(abuse_fora, SEM_IBM["ip"])
 check(t("source_unavailable") in linha, "planilha registra a falha da fonte")
 check("0%" not in linha, "planilha nao grava 0% inventado")
-linha_hash = apresentacao.linha_planilha_hash(h_vt_fora, com_ibm=False)
+linha_hash = apresentacao.linha_planilha_hash(h_vt_fora, SEM_IBM["hash"])
 check(t("source_unavailable") in linha_hash, "planilha de hash registra a falha da fonte")
-check(len(linha_hash) == len(apresentacao.linha_planilha_hash(h_vt_fora, com_ibm=True)) - 2,
+check(len(linha_hash) == len(apresentacao.linha_planilha_hash(h_vt_fora, TODAS["hash"])) - 2,
       "coluna e link do X-Force somem juntos quando a fonte esta desligada")
-linha_url = apresentacao.linha_planilha_url(u_fora, com_ibm=False)
+linha_url = apresentacao.linha_planilha_url(u_fora, SEM_IBM["url"])
 check(t("source_quota") in linha_url, "planilha de dominio registra a cota estourada")
 check("0" not in linha_url[1], "planilha de dominio nao grava 0 inventado")
 
 print("\n[12] A tela de hash e dominio tambem nao mente")
-texto_hash = apresentacao.relatorio_hash(h_vt_fora, com_ibm=False)
+texto_hash = apresentacao.relatorio_hash(h_vt_fora, SEM_IBM["hash"])
 check(t("source_unavailable") in texto_hash, "detalhe do hash diz 'falha na consulta'")
-check(apresentacao.colunas_hash(h_vt_fora, com_ibm=False)[1] == t("verdict_incomplete"),
+check(apresentacao.colunas_hash(h_vt_fora, SEM_IBM["hash"])[1] == t("verdict_incomplete"),
       "veredito da linha de hash e incompleto")
-check(apresentacao.colunas_hash(h_limpo, com_ibm=False)[2] == "nota.txt",
+check(apresentacao.colunas_hash(h_limpo, SEM_IBM["hash"])[2] == "nota.txt",
       "coluna de arquivo traz o nome do VirusTotal, logo depois do veredito")
-check(apresentacao.colunas_hash(h_vt_fora, com_ibm=False)[2] == "-",
+check(apresentacao.colunas_hash(h_vt_fora, SEM_IBM["hash"])[2] == "-",
       "sem resposta do VirusTotal, a coluna de arquivo fica vazia")
-check(apresentacao.colunas_hash(h_limpo, com_ibm=False)[-1] != "nota.txt",
+check(apresentacao.colunas_hash(h_limpo, SEM_IBM["hash"])[-1] != "nota.txt",
       "o arquivo saiu do fim da linha, onde era o primeiro a sair da tela")
-check(apresentacao.colunas_url(u_fora, com_ibm=False)[1] == t("verdict_incomplete"),
+check(apresentacao.colunas_url(u_fora, SEM_IBM["url"])[1] == t("verdict_incomplete"),
       "veredito da linha de dominio e incompleto")
 
 root.destroy()

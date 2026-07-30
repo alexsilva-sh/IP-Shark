@@ -294,14 +294,13 @@ def _relevancia(pulse):
 
 
 def _otx_contexto(dados):
-    """Familia, grupo, tecnica MITRE e o relato mais informativo do OTX."""
+    """Familia, grupo e o relato mais informativo do OTX."""
     info = safe_get(dados, "pulse_info") or {}
     pulses = [p for p in (info.get("pulses") or []) if isinstance(p, dict)]
     pulses.sort(key=_relevancia, reverse=True)
-    familias, tecnicas, adversarios, titulos = [], [], [], []
+    familias, adversarios, titulos = [], [], []
     for pulse in pulses:
         familias += _rotulos(pulse.get("malware_families"))
-        tecnicas += _rotulos(pulse.get("attack_ids"), limite=OTX_MAX_ROTULOS * 2)
         if pulse.get("adversary"):
             adversarios.append(str(pulse["adversary"]).strip())
         if pulse.get("name"):
@@ -309,7 +308,6 @@ def _otx_contexto(dados):
     return {
         "pulsos": _inteiro(info.get("count")) or len(pulses),
         "familias": _rotulos(familias),
-        "tecnicas": _rotulos(tecnicas, limite=OTX_MAX_ROTULOS * 2),
         "adversarios": _rotulos(adversarios, limite=3),
         "titulo": titulos[0] if titulos else "",
         # `validation` presente = indicador em lista de legitimos (Alexa, Majestic).

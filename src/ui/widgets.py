@@ -138,6 +138,10 @@ class Chip(_Pilula):
     def _rotulo(self):
         return ("✓ " if self.var.get() else "") + self._texto
 
+    def refresh(self):
+        """Redesenha depois de alguem mexer na variavel sem passar pelo clique."""
+        self._desenhar()
+
     def _clicar(self, _=None):
         if self.state == "disabled":
             return
@@ -405,6 +409,15 @@ class ResultTable(tk.Frame):
 
     def is_empty(self):
         return not self._ordem
+
+    def ocultar_colunas(self, ids):
+        """Esconde as colunas das fontes desligadas sem mexer na posicao dos valores.
+
+        displaycolumns muda so a exibicao: `add` continua recebendo a linha inteira, entao
+        religar a fonte nao exige refazer o que ja esta na tabela.
+        """
+        visiveis = [cid for cid in self._ids[1:] if cid not in ids]
+        self.tree.configure(displaycolumns=visiveis or self._ids[1:])
 
     def add(self, iid, valores, texto, status, parent=""):
         self.tree.insert(parent, "end", iid=iid, text=str(valores[0]),

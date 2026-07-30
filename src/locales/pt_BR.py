@@ -31,10 +31,6 @@ STRINGS = {
     "paste_hashes": "Cole os hashes abaixo:",
     "paste_domains": "Cole os domínios abaixo:",
 
-    # Toggles
-    "pre_analysis": "Pré-análise",
-    "has_mss": "Cliente tem MSS?",
-
     # Status
     "checking_ips": "Consultando IPs",
     "checking_hashes": "Consultando Hashes",
@@ -122,14 +118,41 @@ STRINGS = {
     "count_pulses": "pulsos",
     "otx_family": "Família de malware",
     "otx_adversary": "Grupo atribuído",
-    "otx_mitre": "Técnicas MITRE ATT&CK",
     "otx_pulses": "Relatado como",
     "otx_known_good": "Consta em lista de legítimos do OTX",
 
     # Hash details
     "file_name": "Nome do arquivo",
     "last_analysis_vt": "Última análise no VirusTotal",
-    "joesandbox_found": "Foi encontrado relatório no JOESandbox",
+
+    # JoeSandbox
+    "joe_score": "JoeSandbox",
+    "joe_verdict_malicious": "Malicioso",
+    "joe_verdict_suspicious": "Suspeito",
+    "joe_verdict_clean": "Limpo",
+    "joe_av": "AV {pct}%",
+    "joe_count_one": "{n} análise",
+    "joe_count_many": "{n} análises",
+    "joe_count_verdict": "{n} com este veredito",
+    "joe_class_evad": "Evasivo",
+    "joe_behavior": "Comportamento observado",
+    "joe_malwareconfig": (
+        "Configuração de malware extraída pelo sandbox (indica C2 identificado)"
+    ),
+    "joe_flag_malwareconfig": "contém configuração de malware",
+    "joe_flag_injects": "injeta código em processos",
+    "joe_flag_drops_pe": "grava executáveis em disco",
+    "joe_flag_creates_files": "cria arquivos maliciosos",
+    "joe_flag_registry": "grava chaves de registro",
+    "joe_flag_http": "gera tráfego HTTP",
+    "joe_flag_traffic": "gera tráfego de rede",
+    "joe_flag_processes": "cria múltiplos processos",
+    "joe_flag_email": "contém anexo de e-mail",
+    "joe_flag_native_cmd": "executa comandos nativos",
+    "joe_flag_sends_sms": "envia SMS",
+    "joe_flag_recv_sms": "recebe SMS",
+    "joe_flag_reboot": "reinicia o dispositivo",
+    "joe_flag_expired": "amostra expirada",
 
     # IP analysis
     "ip_bad_mss_one": (
@@ -195,13 +218,36 @@ STRINGS = {
     "last_report_label": "Último relatório no AbuseIPDB",
     
     # Toggles
-    "toggle_ibm": "IBM X-Force",
     "section_input": "Entrada",
     "section_sources": "Fontes consultadas",
     "section_report": "Relatório",
     "section_results": "Resultados",
-    "toggle_pre_analysis": "Pré-análise",
-    "toggle_has_mss": "Cliente tem MSS?",
+    "toggle_pre_analysis": "Incluir Texto de Análise",
+    "toggle_has_mss": "Incluir Texto de MSS",
+
+    # Personalizar pesquisa
+    "btn_customize": "⚙ Personalizar pesquisa",
+    "src_title": "Fontes consultadas",
+    "src_intro": (
+        "Desmarque o que não quer consultar. Fonte desmarcada não é consultada e não "
+        "deixa o resultado incompleto — útil quando uma base está fora do ar ou quando "
+        "a pressa não permite esperar as consultas por navegador."
+    ),
+    "src_fast": "API",
+    "src_slow": "navegador, mais lento",
+    "src_all": "Marcar todas",
+    "src_only_fast": "Só as rápidas",
+    "src_apply": "Aplicar",
+    "src_none": "Deixe pelo menos uma fonte marcada.",
+    "src_summary_off": "sem {fontes}",
+    "source_abuse": "AbuseIPDB",
+    "source_vt": "VirusTotal",
+    "source_md": "MetaDefender",
+    "source_alien": "AlienVault",
+    "source_ipinfo": "IPinfo (localização)",
+    "source_ibm": "IBM X-Force",
+    "source_joe": "JoeSandbox",
+    "source_assoc_ips": "IPs associados ao domínio",
 
     # Config
     "btn_config_api": "🗝 Configurar API",
@@ -273,6 +319,9 @@ STRINGS = {
     "csv_alien_link": "Link AlienVault",
     "csv_md_link": "Link MetaDefender",
     "csv_joe_link": "Link JoeSandbox",
+    "csv_joe_verdict": "Veredito JoeSandbox",
+    "csv_joe_class": "Classificação JoeSandbox",
+    "csv_joe_behavior": "Comportamento JoeSandbox",
     
     # Tabela de resultados
     "col_verdict": "Veredito",
@@ -281,6 +330,7 @@ STRINGS = {
     "col_ibm": "X-Force",
     "col_alien": "AlienVault",
     "col_md": "MetaDefender",
+    "col_joe": "JoeSandbox",
     "col_country": "País",
     "col_file": "Arquivo",
     "verdict_clean": "● Limpo",
@@ -336,7 +386,6 @@ STRINGS = {
     "progress_done": "{feitos}/{total}",
     "associated_to_domain": "associado ao domínio",
 
-    "toggle_check_ips": "Consultar IPs associados",
     "csv_sheet_results": "Resultados",
     "csv_sheet_domains": "Domínios",
     "csv_sheet_ips_prefix": "IPs - ",

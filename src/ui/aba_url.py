@@ -9,7 +9,6 @@ import pyperclip
 import requests
 
 import log
-from core import api
 from core.api import (
     check_dominio_metadefender,
     check_ip_abuseipdb,
@@ -29,9 +28,12 @@ from core.reputacao import (
 )
 from i18n import plural, t
 from services.exportacao import salvar_planilha_dominios
+from ui import fontes as fontes_catalogo
 from ui import tema
 from ui.apresentacao import (
     aviso_de_cota,
+    cabecalho_planilha_ip,
+    cabecalho_planilha_url,
     colunas_ip,
     colunas_url,
     contar_dominios,
@@ -42,6 +44,7 @@ from ui.apresentacao import (
     relatorio_ip,
     relatorio_url,
 )
+from ui.dialogo_fontes import DialogoFontes
 from ui.widgets import Botao, Chip
 
 _log = log.obter("aba_url")
@@ -80,8 +83,8 @@ class AbaURL:
     _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
 
     def _montar_aba_url(self):
-        self.ibm_url_ativo = True
-        self.check_ips_url_ativo = True
+        self.fontes_url = fontes_catalogo.todas("url")
+        self.fontes_url_varredura = set(self.fontes_url)
         self.results_url = []
         self.scanning_url = False
         self.currently_processing_urls = set()
@@ -105,15 +108,13 @@ class AbaURL:
         self.url_button_action, fontes, relatorio = self._montar_opcoes(
             self.page_url, "btn_check_domain", self.run_url_check)
 
-        self.ibm_var_url = tk.BooleanVar(value=True)
-        self.toggle_ibm_url = Chip(fontes, text=t("toggle_ibm"), variable=self.ibm_var_url)
-        self.toggle_ibm_url.pack(side="left")
-        self._register_i18n(self.toggle_ibm_url, "toggle_ibm")
-        self.check_ips_var_url = tk.BooleanVar(value=True)
-        self.toggle_check_ips = Chip(fontes, text=t("toggle_check_ips"),
-                                     variable=self.check_ips_var_url)
-        self.toggle_check_ips.pack(side="left", padx=(tema.E2, 0))
-        self._register_i18n(self.toggle_check_ips, "toggle_check_ips")
+        self.botao_fontes_url = Botao(fontes, text=t("btn_customize"),
+                                      command=self.abrir_fontes_url)
+        self.botao_fontes_url.pack(side="left")
+        self._register_i18n(self.botao_fontes_url, "btn_customize")
+        self.resumo_fontes_url = tk.Label(fontes, bg=tema.FUNDO_PAINEL,
+                                          fg=tema.TEXTO_SECUNDARIO, font=tema.fonte("menor"))
+        self.resumo_fontes_url.pack(side="left", padx=(tema.E2, 0))
 
         self.pre_var_url = tk.BooleanVar(value=False)
         self.toggle_pre_url = Chip(relatorio, text=t("toggle_pre_analysis"),
@@ -160,6 +161,14 @@ class AbaURL:
     def show_url_page(self):
         self._mostrar_pagina("url")
 
+    def abrir_fontes_url(self):
+        DialogoFontes(self.root, "url", self.fontes_url, self._aplicar_fontes_url)
+
+    def _aplicar_fontes_url(self, escolhidas):
+        self.fontes_url = escolhidas
+        self.resumo_fontes_url.config(text=self._resumo_fontes("url", escolhidas))
+        self.tabela_url.ocultar_colunas(fontes_catalogo.colunas_ocultas("url", escolhidas))
+
     def _update_mss_state_url(self, *args):
         self.mss_url_switch.set_state("normal" if self.pre_var_url.get() else "disabled")
 
@@ -196,8 +205,7 @@ class AbaURL:
         self.currently_processing_urls.clear()
         self.url_status_label.config(text="")
         self.scanning_url = True
-        self.ibm_url_ativo = self.ibm_var_url.get()
-        self.check_ips_url_ativo = self.check_ips_var_url.get()
+        self.fontes_url_varredura = set(self.fontes_url)
         self.total_url, self.feitos_url = len(url_list), 0
         self.url_button_action.config(state="disabled")
         self._update_action_buttons()
@@ -224,12 +232,13 @@ class AbaURL:
                 self.cota_url.update(fontes_em_cota(data["estados"]))
                 self._track_processing(self.currently_processing_urls, url, False,
                                        self.update_status_label_url)
-                self.results_url.append(linha_planilha_url(data, self.ibm_url_ativo))
+                fontes = self.fontes_url_varredura
+                self.results_url.append(linha_planilha_url(data, fontes))
                 self._ui(self._linha_url, i + 1,
-                         colunas_url(data, self.ibm_url_ativo),
-                         relatorio_url(data, self.ibm_url_ativo, index=i + 1, total=len(url_list)),
+                         colunas_url(data, fontes),
+                         relatorio_url(data, fontes, index=i + 1, total=len(url_list)),
                          status)
-                if self.check_ips_url_ativo and not self.stop_flag:
+                if "ips" in self.fontes_url_varredura and not self.stop_flag:
                     self._varrer_ips_do_dominio(i + 1, url)
             if not self.stop_flag:
                 self._ui(self._finish_url_scan)
@@ -239,21 +248,27 @@ class AbaURL:
 
     def _consultar_dominio(self, url):
         """Veredito do dominio, ou None se a varredura foi cancelada no meio."""
+        fontes = self.fontes_url_varredura
         if self.stop_flag:
             return None
-        result_vt, estado_vt = check_url_virustotal(url)
+        vt_score, estado_vt = None, None
+        if "vt" in fontes:
+            result_vt, estado_vt = check_url_virustotal(url)
+            vt_score = result_vt.get("score")
         if self.stop_flag:
             return None
         ibm_score, estado_ibm = "-", None
-        if self.ibm_url_ativo and not self.stop_flag:
+        if "ibm" in fontes and not self.stop_flag:
             ibm_score, estado_ibm = self._consultar_ibm(check_url_ibm, url)
         if self.stop_flag:
             return None
-        alien, _alien_link, estado_alien = check_url_alienvault(url)
+        alien, estado_alien = None, None
+        if "alien" in fontes:
+            alien, _alien_link, estado_alien = check_url_alienvault(url)
         if self.stop_flag:
             return None
-        md, estado_md = check_dominio_metadefender(url)
-        return build_url_result(url, result_vt.get("score"), ibm_score, alien,
+        md, estado_md = check_dominio_metadefender(url) if "md" in fontes else (None, None)
+        return build_url_result(url, vt_score, ibm_score, alien,
                                 estado_vt=estado_vt, estado_ibm=estado_ibm,
                                 estado_alien=estado_alien, md=md, estado_md=estado_md)
 
@@ -283,15 +298,25 @@ class AbaURL:
             if csv_data:
                 self.ip_results_by_domain[domain].append(csv_data)
 
+    def _fontes_ip_associado(self):
+        """A escolha da aba vale para os IPs resolvidos.
+
+        AbuseIPDB e IPinfo entram sempre: nao tem interruptor aqui porque nao se aplicam ao
+        dominio em si, so aos IPs.
+        """
+        return (self.fontes_url_varredura & {"vt", "md", "ibm"}) | {"abuse", "local"}
+
     def process_url_ip_associated(self, ip, domain):
+        fontes = self._fontes_ip_associado()
         try:
             abuseipdb_result, estado_abuse = check_ip_abuseipdb(ip)
-            virustotal_result, estado_vt = check_ip_virustotal(ip)
-            md, estado_md = check_ip_metadefender(ip)
+            virustotal_result, estado_vt = (
+                check_ip_virustotal(ip) if "vt" in fontes else (None, None))
+            md, estado_md = check_ip_metadefender(ip) if "md" in fontes else (None, None)
             city, country = get_location(ip)
             assoc_domain = get_domain_from_abuseipdb(abuseipdb_result)
-            ibm_score, estado_ibm = None, api.FONTE_OK
-            if self.ibm_url_ativo:
+            ibm_score, estado_ibm = None, None
+            if "ibm" in fontes:
                 ibm_score, estado_ibm = self._consultar_ibm(
                     lambda d, alvo: check_ip_ibm(d, alvo)[1], ip)
             data = build_ip_result(
@@ -308,8 +333,8 @@ class AbaURL:
                 md=md,
                 estado_md=estado_md,
             )
-            return (relatorio_ip(data), data["status"],
-                    linha_planilha_ip(data, self.ibm_url_ativo), colunas_ip(data, "-"),
+            return (relatorio_ip(data, fontes=fontes), data["status"],
+                    linha_planilha_ip(data, fontes), colunas_ip(data, "-", fontes),
                     data.get("estados", {}))
         except Exception as e:
             _log.exception("falha ao consultar um IP associado ao dominio")
@@ -381,22 +406,8 @@ class AbaURL:
         if not self.results_url:
             messagebox.showwarning(t("done"), t("no_results"))
             return
-        domain_headers = [
-            t("csv_domain"), t("csv_verdict"), t("csv_vt_score"),
-            *([t("csv_ibm_score")] if self.ibm_url_ativo else []),
-            t("csv_alien_score"), t("csv_md_score"), t("csv_vt_link"),
-            *([t("csv_ibm_link")] if self.ibm_url_ativo else []),
-            t("csv_alien_link"), t("csv_md_link"),
-        ]
-        ip_headers = [
-            t("csv_ip"), t("csv_verdict"), t("csv_abuse_score"), t("csv_vt_score"),
-            *([t("csv_ibm_score")] if self.ibm_url_ativo else []),
-            t("csv_md_score"),
-            t("csv_domain"), t("csv_country"), t("csv_city"), t("csv_last_report"),
-            t("csv_abuse_link"), t("csv_vt_link"),
-            *([t("csv_ibm_link")] if self.ibm_url_ativo else []),
-            t("csv_md_link"),
-        ]
+        domain_headers = cabecalho_planilha_url(self.fontes_url_varredura)
+        ip_headers = cabecalho_planilha_ip(self._fontes_ip_associado())
         salvar_planilha_dominios(
             domain_results=self.results_url,
             domain_headers=domain_headers,
