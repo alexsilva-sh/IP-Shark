@@ -89,13 +89,37 @@ def _fontes_indisponiveis(pares):
     return [nome for nome, estado in pares if estado in ESTADOS_SEM_RESPOSTA]
 
 
-def _veredito(malicioso, fontes_indisponiveis):
-    return "bad" if malicioso else ("incompleto" if fontes_indisponiveis else "clean")
+# Nao ha pagina publica por indicador para IP e dominio; o portal e o que da para oferecer.
+LINK_MD = "https://my.opswat.com/portal/metadefender-cloud"
+
+
+def md_detectou(md, estado_md):
+    """Contagem de quem acusou, nao de quem mencionou -- por isso decide veredito."""
+    return estado_md == FONTE_OK and (safe_get(md, "detectados") or 0) > 0
+
+
+def _sem_registro(estados):
+    """Toda fonte consultada respondeu 'nao conheco este indicador'.
+
+    Nao e limpo: ninguem analisou. O AlienVault fica fora da conta porque pulso e mencao,
+    nao analise -- ausencia de pulso nunca foi atestado de nada.
+    """
+    respostas = [estado for estado in estados if estado is not None]
+    return bool(respostas) and all(estado == FONTE_SEM_DADOS for estado in respostas)
+
+
+def _veredito(malicioso, fontes_indisponiveis, decisivas=()):
+    if malicioso:
+        return "bad"
+    if fontes_indisponiveis:
+        return "incompleto"
+    return "sem_registros" if _sem_registro(decisivas) else "clean"
 
 
 def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
                     city, country, domain,
-                    estado_abuse=FONTE_OK, estado_vt=FONTE_OK, estado_ibm=FONTE_OK):
+                    estado_abuse=FONTE_OK, estado_vt=FONTE_OK, estado_ibm=FONTE_OK,
+                    md=None, estado_md=None):
     # Score None = fonte nao respondeu. Nunca 0, que se confunde com "sem denuncias".
     abuse_confidence = (safe_get(abuseipdb_result, "data", "abuseConfidenceScore", default=0)
                         if estado_abuse == FONTE_OK else None)
@@ -111,10 +135,12 @@ def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
         except (ValueError, TypeError):
             ibm_numeric = 0
 
-    has_bad_reputation = (abuse_confidence or 0) > 0 or (vt_score or 0) > 0 or ibm_numeric > 1
+    has_bad_reputation = ((abuse_confidence or 0) > 0 or (vt_score or 0) > 0 or ibm_numeric > 1
+                          or md_detectou(md, estado_md))
 
     fontes_indisponiveis = _fontes_indisponiveis((
-        ("AbuseIPDB", estado_abuse), ("VirusTotal", estado_vt), ("IBM X-Force", estado_ibm)))
+        ("AbuseIPDB", estado_abuse), ("VirusTotal", estado_vt), ("IBM X-Force", estado_ibm),
+        ("MetaDefender", estado_md)))
 
     last_reported_at = safe_get(abuseipdb_result, "data", "lastReportedAt")
     if last_reported_at:
@@ -129,9 +155,10 @@ def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
         "vt_score": vt_score,
         "ibm_score": ibm_score,
         "whitelisted": whitelisted,
+        "md": md,
         "fontes_indisponiveis": fontes_indisponiveis,
-        "cota_estourada": FONTE_COTA in (estado_abuse, estado_vt, estado_ibm),
-        "estados": {"abuse": estado_abuse, "vt": estado_vt, "ibm": estado_ibm},
+        "cota_estourada": FONTE_COTA in (estado_abuse, estado_vt, estado_ibm, estado_md),
+        "estados": {"abuse": estado_abuse, "vt": estado_vt, "ibm": estado_ibm, "md": estado_md},
         "status": (
             # Deteccao de uma fonte que respondeu ja e conclusao valida, mesmo com
             # outra fora do ar. "Limpo", nao: exige que todas tenham respondido.
@@ -140,6 +167,7 @@ def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
             "bad" if has_bad_reputation else
             "incompleto" if fontes_indisponiveis else
             "whitelisted" if whitelisted else
+            "sem_registros" if _sem_registro((estado_abuse, estado_vt, estado_ibm, estado_md)) else
             "clean"
         ),
         "domain": domain,
@@ -150,12 +178,14 @@ def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
             "abuse": f"https://www.abuseipdb.com/check/{ip}",
             "vt": f"https://www.virustotal.com/gui/ip-address/{ip}",
             "ibm": f"https://exchange.xforce.ibmcloud.com/ip/{ip}" if ibm_score else None,
+            "md": LINK_MD if estado_md else None,
         },
     }
 
 
-def build_hash_result(hash_str, virustotal_result, ibm_score, alien_score, joe_found=False,
-                      estado_vt=FONTE_OK, estado_ibm=None, estado_alien=FONTE_OK):
+def build_hash_result(hash_str, virustotal_result, ibm_score, alien, joe_found=False,
+                      estado_vt=FONTE_OK, estado_ibm=None, estado_alien=FONTE_OK,
+                      md=None, estado_md=None):
     """Veredito de um hash. `estado_ibm=None` significa X-Force nao consultado."""
     atributos = safe_get(virustotal_result, "data", "attributes")
     if estado_vt != FONTE_OK or not isinstance(atributos, dict):
@@ -167,35 +197,39 @@ def build_hash_result(hash_str, virustotal_result, ibm_score, alien_score, joe_f
         nome_arquivo = safe_get(atributos, "meaningful_name")
         ultima_analise = _data_da_analise(safe_get(atributos, "last_analysis_date"))
 
+    # Pulso do OTX fica fora: e mencao da comunidade, nao deteccao (google.com tinha 50).
     malicioso = (
         (vt_score or 0) > 0
         or (estado_ibm == FONTE_OK and str(ibm_score).strip().lower() in ("high", "medium"))
-        or (estado_alien == FONTE_OK and alien_score not in ("0", None))
+        or md_detectou(md, estado_md)
     )
     fontes = _fontes_indisponiveis((("VirusTotal", estado_vt), ("AlienVault", estado_alien),
-                                    ("IBM X-Force", estado_ibm)))
+                                    ("IBM X-Force", estado_ibm), ("MetaDefender", estado_md)))
     return {
         "hash": hash_str,
         "vt_score": vt_score,
         "ibm_score": ibm_score,
-        "alien_score": alien_score,
+        "alien": alien,
+        "md": md,
         "nome_arquivo": nome_arquivo,
         "ultima_analise": ultima_analise,
         "joe_found": joe_found,
-        "estados": {"vt": estado_vt, "alien": estado_alien, "ibm": estado_ibm},
+        "estados": {"vt": estado_vt, "alien": estado_alien, "ibm": estado_ibm, "md": estado_md},
         "fontes_indisponiveis": fontes,
-        "status": _veredito(malicioso, fontes),
+        "status": _veredito(malicioso, fontes, (estado_vt, estado_ibm, estado_md)),
         "links": {
             "vt": f"https://www.virustotal.com/gui/file/{hash_str}",
             "ibm": f"https://exchange.xforce.ibmcloud.com/malware/{hash_str}",
             "alien": f"https://otx.alienvault.com/indicator/file/{hash_str}",
             "joe": f"https://www.joesandbox.com/analysis/search?q={hash_str}",
+            "md": LINK_MD if estado_md else None,
         },
     }
 
 
-def build_url_result(url, vt_score, ibm_score, alien_score,
-                     estado_vt=FONTE_OK, estado_ibm=None, estado_alien=FONTE_OK):
+def build_url_result(url, vt_score, ibm_score, alien,
+                     estado_vt=FONTE_OK, estado_ibm=None, estado_alien=FONTE_OK,
+                     md=None, estado_md=None):
     """Veredito de um dominio. `estado_ibm=None` significa X-Force nao consultado."""
     malicioso = estado_vt == FONTE_OK and (vt_score or 0) > 0
     if estado_ibm == FONTE_OK:
@@ -204,24 +238,25 @@ def build_url_result(url, vt_score, ibm_score, alien_score,
             malicioso = malicioso or float(ibm_score) >= 2
         except (ValueError, TypeError):
             malicioso = malicioso or str(ibm_score).strip().lower() in ("high", "medium")
-    if estado_alien == FONTE_OK and str(alien_score).strip() not in ("0", "-", ""):
-        malicioso = True
+    malicioso = malicioso or md_detectou(md, estado_md)
 
     fontes = _fontes_indisponiveis((("VirusTotal", estado_vt), ("IBM X-Force", estado_ibm),
-                                    ("AlienVault", estado_alien)))
+                                    ("AlienVault", estado_alien), ("MetaDefender", estado_md)))
     vt_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
     return {
         "url": url,
         "vt_score": vt_score,
         "ibm_score": ibm_score,
-        "alien_score": alien_score,
-        "estados": {"vt": estado_vt, "ibm": estado_ibm, "alien": estado_alien},
+        "alien": alien,
+        "md": md,
+        "estados": {"vt": estado_vt, "ibm": estado_ibm, "alien": estado_alien, "md": estado_md},
         "fontes_indisponiveis": fontes,
-        "status": _veredito(malicioso, fontes),
+        "status": _veredito(malicioso, fontes, (estado_vt, estado_ibm, estado_md)),
         "links": {
             "vt": f"https://www.virustotal.com/gui/url/{vt_id}",
             "ibm": f"https://exchange.xforce.ibmcloud.com/url/{url}",
             "alien": f"https://otx.alienvault.com/indicator/url/{url}",
+            "md": LINK_MD if estado_md else None,
         },
     }
 

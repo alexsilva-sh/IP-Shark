@@ -104,28 +104,80 @@ app.tabela_ip.tree.selection_set("ip-2")
 root.update()
 check("2.2.2.2" in app.tabela_ip.detalhe.get("1.0", tk.END), "o detalhe do IOC tomou o painel")
 
-# Janela withdrawn nao tem geometria: a regiao do clique e ditada aqui.
-regiao = {"onde": "nothing"}
-app.tabela_ip.tree.identify_region = lambda x, y: regiao["onde"]
+# Janela withdrawn nao tem geometria: regiao e elemento do clique sao ditados aqui.
+onde = {"regiao": "nothing", "elemento": "text"}
+tabela_ip = app.tabela_ip
+tabela_ip.tree.identify_region = lambda x, y: onde["regiao"]
+tabela_ip.tree.identify_element = lambda x, y: onde["elemento"]
+tabela_ip.tree.identify_row = lambda y: "ip-2"
 clique = tk.Event()
 clique.x, clique.y = 10, 10
 
-app.tabela_ip._ao_clicar(clique)
-painel = app.tabela_ip.detalhe.get("1.0", tk.END)
+
+def clicar():
+    return tabela_ip._ao_clicar(clique)
+
+
+clicar()
+painel = tabela_ip.detalhe.get("1.0", tk.END)
 check("aviso que nao se copia" in painel and "resumo do relatorio" in painel,
       "clicar na area vazia devolve aviso e resumo")
-check(not app.tabela_ip.tree.selection(), "e a linha volta a ficar sem selecao")
+check(not tabela_ip.tree.selection(), "e a linha volta a ficar sem selecao")
 
-for onde in ("heading", "cell", "tree"):
-    regiao["onde"] = onde
-    app.tabela_ip.tree.selection_set("ip-2")
-    root.update()
-    app.tabela_ip._ao_clicar(clique)
-    check(app.tabela_ip.tree.selection() == ("ip-2",),
-          f"clique em '{onde}' preserva a selecao -- so a area vazia desfaz")
-for tabela in (app.tabela_ip, app.tabela_hash, app.tabela_url):
+# Area vazia nao existe com a tabela cheia: clicar de novo na linha selecionada tambem volta.
+onde["regiao"] = "cell"
+tabela_ip.tree.selection_set("ip-2")
+root.update()
+check(clicar() == "break", "o segundo clique na linha selecionada e consumido")
+check(not tabela_ip.tree.selection() and
+      "aviso que nao se copia" in tabela_ip.detalhe.get("1.0", tk.END),
+      "clicar de novo na linha selecionada devolve o aviso")
+check(clicar() is None,
+      "com a linha ja desmarcada o clique segue para o Treeview, que reseleciona")
+
+onde["regiao"], onde["elemento"] = "tree", "Treeitem.indicator"
+tabela_ip.tree.selection_set("ip-2")
+root.update()
+check(clicar() is None and tabela_ip.tree.selection() == ("ip-2",),
+      "clique na setinha de expandir preserva a selecao -- ali se abre o dominio")
+
+onde["regiao"], onde["elemento"] = "heading", "text"
+check(clicar() is None and tabela_ip.tree.selection() == ("ip-2",),
+      "clique no cabecalho so ordena")
+
+tabela_ip.set_preamble("")
+onde["regiao"] = "nothing"
+check(clicar() is None and tabela_ip.tree.selection() == ("ip-2",),
+      "sem resumo para voltar, o clique nao mexe na selecao")
+tabela_ip.set_preamble("resumo do relatorio", "aviso que nao se copia")
+for tabela in (tabela_ip, app.tabela_hash, app.tabela_url):
     check(tabela.tree.bind("<Button-1>") != "",
           "IP, hash e dominio compartilham o mesmo caminho de volta")
+
+print("\n[7c] Clique em qualquer superficie inerte da janela devolve o aviso")
+
+
+def clicar_em(widget):
+    evento = tk.Event()
+    evento.widget = widget
+    tabela_ip.tree.selection_set("ip-2")
+    root.update()
+    app._clique_na_janela(evento)
+    return "aviso que nao se copia" in tabela_ip.detalhe.get("1.0", tk.END)
+
+
+inertes = [("cartao de resultados", tabela_ip.master), ("rotulo de status", app.status_label),
+           ("barra de progresso", app.progress_ip), ("campo de entrada", app.entry.texto),
+           ("titulo da pagina", app.titulo_pagina), ("barra lateral", app.lateral)]
+for nome, widget in inertes:
+    check(clicar_em(widget) and not tabela_ip.tree.selection(),
+          f"clique em {nome} desfaz a selecao e mostra o aviso")
+
+# Quem trata o proprio clique fica de fora: perder a selecao ali atrapalharia.
+for nome, widget in (("botao", app.copy_button), ("chip", app.toggle_ibm_ip),
+                     ("painel de detalhe", tabela_ip.detalhe), ("tabela", tabela_ip.tree)):
+    check(not clicar_em(widget) and tabela_ip.tree.selection() == ("ip-2",),
+          f"clique em {nome} preserva a selecao")
 
 print("\n[8] Barra de progresso determinada")
 app.scanning_ip = True
@@ -140,6 +192,40 @@ print("\n[9] Erro vira linha, nao caixa de dialogo")
 app._linha_erro_ip(9, "4.4.4.4", "timeout")
 check("ip-erro-9" in app.tabela_ip.tree.get_children(""), "IP com erro entrou como linha")
 check(app.tabela_ip.tree.set("ip-erro-9", "veredito") == t("verdict_unknown"), "erro marcado indisponivel")
+
+print("\n[9b] 'Sem registros' nas tres abas, inclusive no IP associado ao dominio")
+from ui import aba_url as _aba_url
+
+_aba_url.resolver_via_google_dns = lambda d: ["9.9.9.9"]
+_aba_url.resolver_via_socket = lambda d: []
+app.stop_flag = False
+app.sem_registro_url, app.incompletos_url = set(), set()
+app.bad_urls, app.review_urls, app.cota_url = set(), set(), set()
+app.ip_results_by_domain = {}
+app.process_url_ip_associated = lambda ip, dominio: (
+    "detalhe", "sem_registros", None, (ip, t("verdict_no_records"), *["-"] * 5), {})
+app._varrer_ips_do_dominio(1, "nunca-vista.com")
+check(app.sem_registro_url == {"9.9.9.9"},
+      "IP associado sem registro e contabilizado -- era o caminho que passava batido")
+
+for aba, conjunto, resultados, analise in (
+    ("ip", "sem_registro_ip", "results_ip", app._append_analysis),
+    ("hash", "sem_registro_hash", "results_hash", app._append_analysis_hash),
+    ("url", "sem_registro_url", "results_url", app._append_analysis_url),
+):
+    tabela = app._tabela(aba)
+    tabela.clear()
+    getattr(app, f"pre_var_{aba}").set(True)
+    setattr(app, resultados, [["x"]])
+    setattr(app, conjunto, {"indicador-desconhecido"})
+    analise()
+    relatorio = tabela.report()
+    check(t("no_records_one").split("{")[0].strip() in relatorio,
+          f"aba de {aba} avisa que o indicador nao foi encontrado")
+    check(t(f"{'url' if aba == 'url' else aba}_clean_one") not in relatorio,
+          f"e nao declara nada limpo na aba de {aba}")
+    getattr(app, f"pre_var_{aba}").set(False)
+    setattr(app, conjunto, set())
 
 print("\n[10] IPs associados como filhos do dominio")
 app.tabela_url.clear()
@@ -303,9 +389,41 @@ for i in range(app.LIMITE_HISTORICO + 5):
 check(len(app.historico["ip"]) == app.LIMITE_HISTORICO,
       f"historico limitado a {app.LIMITE_HISTORICO}")
 check(app.historico["hash"] == [], "cada aba tem o seu historico")
-app._restaurar_historico("77.77.77.77 88.88.88.88")
+app._restaurar_historico({"texto": "77.77.77.77 88.88.88.88"})
 check("77.77.77.77" in app.entry.get_text(), "clicar no historico devolve o texto ao campo")
 check("válidos" in app.entry.resumo["text"], "contador do campo acompanha a restauracao")
+
+print("\n[21b] O historico guarda o resultado, nao so o texto consultado")
+app.historico = {"ip": [], "hash": [], "url": []}
+app.tabela_ip.clear()
+app.registrar_historico("ip", "5.5.5.5 6.6.6.6", 2)
+app.append_ip_results([linha_ip(1, "5.5.5.5", "bad", "99%", 7, "9.0", "Rússia")])
+app.tabela_ip.set_preamble("resumo guardado", "aviso guardado")
+app.results_ip = [["5.5.5.5"]]
+app.scanning_ip = False
+app._scan_stopped_ip()
+entrada = app.historico["ip"][0]
+check(bool(entrada.get("resultado")), "a varredura anexa o resultado a entrada do historico")
+
+# Uma segunda varredura toma a tela: e desse estado que o clique tem de resgatar.
+app.tabela_ip.clear()
+app.results_ip = []
+app._restaurar_historico(entrada)
+painel = app.tabela_ip.detalhe.get("1.0", tk.END)
+check(list(app.tabela_ip.tree.get_children("")) == ["ip-1"], "as linhas voltam para a tabela")
+check("aviso guardado" in painel and "resumo guardado" in painel,
+      "aviso e resumo voltam com elas")
+check("resumo guardado" in app.tabela_ip.report() and "5.5.5.5" in app.tabela_ip.report(),
+      "Copiar passa a valer para o resultado recuperado")
+check(app.results_ip == [["5.5.5.5"]], "e Exportar tambem, com as linhas de planilha de volta")
+check("5.5.5.5" in app.entry.get_text(), "o texto consultado continua voltando ao campo")
+check(str(app.copy_button["state"]) == "normal", "os botoes de acao reagem ao que voltou")
+
+app.scanning_ip = True
+app.tabela_ip.clear()
+app._restaurar_historico(entrada)
+check(app.tabela_ip.is_empty(), "varredura em andamento nao e atropelada pelo historico")
+app.scanning_ip = False
 
 print("\n[22] Chips de opcao no lugar dos interruptores")
 from ui.widgets import Cartao, Chip
@@ -364,10 +482,30 @@ check(app.tabela_hash.colunas[2][0] == "arquivo",
       "coluna de arquivo vem depois do veredito, nao no fim da linha")
 check(app.tabela_ip.tree.cget("xscrollcommand") != "",
       "tabela tem rolagem horizontal: sem ela a ultima coluna some em tela pequena")
-ultima = app.tabela_ip.colunas[-1][0]
-check(app.tabela_ip.tree.column(ultima, "stretch"),
-      "a ultima coluna estica para absorver a sobra de largura")
+check(not any(app.tabela_ip.tree.column(c[0], "stretch") for c in app.tabela_ip.colunas),
+      "nenhuma coluna estica: a esticada parava longe das outras em monitor largo")
 check(t("btn_copy") == "Copiar resultados", "o botao de copiar diz o que copia")
+
+print("\n[24b] Coluna acompanha o tamanho do conteudo")
+tabela_h = app.tabela_hash
+tabela_h.clear()
+estreita = int(tabela_h.tree.column("arquivo", "width"))
+tabela_h.add("hash-1", ("a" * 40, "✖", "instalador-com-nome-bem-longo-mesmo.exe", 65, "high", 1),
+             "detalhe", "bad")
+larga = int(tabela_h.tree.column("arquivo", "width"))
+check(larga > estreita, f"coluna cresce para caber o nome do arquivo ({estreita} -> {larga})")
+check(int(tabela_h.tree.column("#0", "width")) >=
+      tema.fonte("mono").measure("a" * 40) + tabela_h.RECUO_ARVORE,
+      "o hash de 40 caracteres cabe inteiro, sem cortar")
+tabela_h.add("hash-2", ("b" * 40, "✖", "x" * 400, 9, "high", 0), "detalhe", "bad")
+check(int(tabela_h.tree.column("arquivo", "width")) <=
+      int(tabela_h.LARGURA_MAX * tema.fator_escala()),
+      "e tem teto: nome absurdo nao empurra as outras colunas para fora da tela")
+check(int(tabela_h.tree.column("vt", "width")) == tabela_h.colunas[3][2],
+      "coluna de score nao incha por conteudo curto -- so cresce quem precisa")
+tabela_h.clear()
+check(int(tabela_h.tree.column("arquivo", "width")) == tabela_h.colunas[2][2],
+      "nova consulta volta a largura de projeto, sem herdar a anterior")
 
 print("\n[25] A aparencia escolhida fica salva para a proxima abertura")
 import preferencias

@@ -36,8 +36,9 @@ incompleto = ip("4.4.4.4", None, VT_LIMPO, estado_abuse=core.FONTE_COTA, estado_
 
 print("\n[1] O veredito chega na planilha de IP")
 headers = [t("csv_ip"), t("csv_verdict"), t("csv_abuse_score"), t("csv_vt_score"),
+           t("csv_md_score"),
            t("csv_domain"), t("csv_country"), t("csv_city"), t("csv_last_report"),
-           t("csv_abuse_link"), t("csv_vt_link")]
+           t("csv_abuse_link"), t("csv_vt_link"), t("csv_md_link")]
 linhas = [apresentacao.linha_planilha_ip(d, com_ibm=False)
           for d in (limpo, malicioso, revisar, incompleto)]
 check(all(len(linha) == len(headers) for linha in linhas),
@@ -72,10 +73,12 @@ check(cores <= {"F2F2F2", "FFFFFF"}, f"nenhuma linha destacada sem o parametro (
 print("\n[4] Hash e dominio seguem o mesmo formato")
 VT_HASH = {"data": {"attributes": {"last_analysis_stats": {"malicious": 7},
                                    "meaningful_name": "fatura.exe"}}}
-d_hash = reputacao.build_hash_result("a" * 32, VT_HASH, "-", "0")
+OTX_ZERO = core._otx_contexto({})
+d_hash = reputacao.build_hash_result("a" * 32, VT_HASH, "-", OTX_ZERO)
 h_headers = [t("csv_hash"), t("csv_verdict"), t("csv_vt_score"), t("csv_alien_score"),
+             t("csv_md_score"),
              t("csv_file_name"), t("csv_last_analysis"), t("csv_vt_link"),
-             t("csv_alien_link"), t("csv_joe_link")]
+             t("csv_alien_link"), t("csv_md_link"), t("csv_joe_link")]
 h_linha = apresentacao.linha_planilha_hash(d_hash, com_ibm=False)
 check(len(h_linha) == len(h_headers), f"linha de hash bate com o cabecalho ({len(h_linha)})")
 caminho = exportacao.salvar_planilha([h_linha], h_headers, filename="hash.xlsx",
@@ -83,9 +86,9 @@ caminho = exportacao.salvar_planilha([h_linha], h_headers, filename="hash.xlsx",
 ws3 = load_workbook(caminho).active
 check(ws3.cell(2, 2).value == t("verdict_bad"), "veredito do hash na planilha")
 
-d_url = reputacao.build_url_result("exemplo.com", 4, "-", "0")
+d_url = reputacao.build_url_result("exemplo.com", 4, "-", OTX_ZERO)
 u_headers = [t("csv_domain"), t("csv_verdict"), t("csv_vt_score"), t("csv_alien_score"),
-             t("csv_vt_link"), t("csv_alien_link")]
+             t("csv_md_score"), t("csv_vt_link"), t("csv_alien_link"), t("csv_md_link")]
 u_linha = apresentacao.linha_planilha_url(d_url, com_ibm=False)
 check(len(u_linha) == len(u_headers), f"linha de dominio bate com o cabecalho ({len(u_linha)})")
 
@@ -101,6 +104,30 @@ check(aba_ips.cell(1, 2).value == t("csv_verdict"), "aba do IP associado tem a c
 check(aba_ips.cell(2, 2).value == t("verdict_bad"), "veredito do IP associado")
 check((aba_ips.cell(2, 1).fill.start_color.rgb or "")[-6:] == "FFD9D9",
       "IP associado malicioso tambem sai destacado")
+
+print("\n[5b] O link do MetaDefender chega nas tres planilhas")
+MD_OK = {"detectados": 3, "total": 20}
+com_md = (
+    ("IP", apresentacao.linha_planilha_ip(
+        ip("9.8.7.6", ABUSE_RUIM, VT_RUIM, estado_ibm=None, md=MD_OK,
+           estado_md=core.FONTE_OK), False), headers),
+    ("hash", apresentacao.linha_planilha_hash(
+        reputacao.build_hash_result("a" * 32, VT_HASH, "-", OTX_ZERO, md=MD_OK,
+                                    estado_md=core.FONTE_OK), False), h_headers),
+    ("dominio", apresentacao.linha_planilha_url(
+        reputacao.build_url_result("exemplo.com", 4, "-", OTX_ZERO, md=MD_OK,
+                                   estado_md=core.FONTE_OK), False), u_headers),
+)
+for nome, linha, cabecalho in com_md:
+    coluna = cabecalho.index(t("csv_md_link"))
+    check(len(linha) == len(cabecalho) and linha[coluna] == reputacao.LINK_MD,
+          f"planilha de {nome} leva o link na coluna certa ({linha[coluna]!r})")
+    placar = cabecalho.index(t("csv_md_score"))
+    check(linha[placar] == "3/20", f"e o placar do multiscanning ({linha[placar]!r})")
+
+sem_md = apresentacao.linha_planilha_hash(d_hash, False)
+check(sem_md[h_headers.index(t("csv_md_link"))] == "" and len(sem_md) == len(h_headers),
+      "fonte nao consultada deixa a celula vazia, sem desalinhar a planilha")
 
 print("\n[6] O filtro do Excel cobre a coluna nova")
 check(ws.auto_filter.ref.startswith("A1"), f"auto-filtro desde A1 ({ws.auto_filter.ref})")

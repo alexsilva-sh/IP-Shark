@@ -9,7 +9,12 @@ import pyperclip
 
 import log
 from core import api
-from core.api import check_ip_abuseipdb, check_ip_virustotal, get_location
+from core.api import (
+    check_ip_abuseipdb,
+    check_ip_metadefender,
+    check_ip_virustotal,
+    get_location,
+)
 from core.navegador import check_ip_ibm
 from core.reputacao import build_ip_result, get_domain_from_abuseipdb, is_valid_ip
 from i18n import plural, t
@@ -42,6 +47,7 @@ class AbaIP:
         self.review_ips = set()
         self.ignorados_ip = []
         self.incompletos_ip = set()
+        self.sem_registro_ip = set()
         self.cota_ip = set()
         self.total_ip = self.feitos_ip = 0
 
@@ -86,6 +92,7 @@ class AbaIP:
             ("abuse", "col_abuse", 95, "center"),
             ("vt", "col_vt", 95, "center"),
             ("ibm", "col_ibm", 85, "center"),
+            ("md", "col_md", 120, "center"),
             ("pais", "col_country", 170, "w"),
         ])
 
@@ -116,6 +123,7 @@ class AbaIP:
         self.bad_ips = set()
         self.review_ips = set()
         self.incompletos_ip = set()
+        self.sem_registro_ip = set()
         self.cota_ip = set()
         self.currently_processing.clear()
         self.status_label.config(text="")
@@ -199,6 +207,9 @@ class AbaIP:
         virustotal_result, estado_vt = check_ip_virustotal(ip)
         if self.stop_flag:
             return None
+        md, estado_md = check_ip_metadefender(ip)
+        if self.stop_flag:
+            return None
         city, country = get_location(ip)
         domain = get_domain_from_abuseipdb(abuseipdb_result)
         ibm_score, estado_ibm = None, api.FONTE_OK
@@ -217,6 +228,8 @@ class AbaIP:
             estado_abuse=estado_abuse,
             estado_vt=estado_vt,
             estado_ibm=estado_ibm,
+            md=md,
+            estado_md=estado_md,
         )
         return (index, linha_planilha_ip(data, self.ibm_ip_ativo),
                 relatorio_ip(data, index=index, total=total), ip, data["status"],
@@ -230,6 +243,8 @@ class AbaIP:
                 self.review_ips.add(ip)
             elif status == "incompleto":
                 self.incompletos_ip.add(ip)
+            elif status == "sem_registros":
+                self.sem_registro_ip.add(ip)
             self.cota_ip.update(fontes_em_cota(data.get("estados", {})))
             self.results_ip.append(csv_data)
             self.tabela_ip.add(f"ip-{index}", colunas, terminal_output, status)
@@ -237,7 +252,7 @@ class AbaIP:
 
     def _linha_erro_ip(self, indice, ip, erro):
         self.tabela_ip.add(f"ip-erro-{indice}",
-                           (ip, t("verdict_unknown"), "-", "-", "-", "-"),
+                           (ip, t("verdict_unknown"), "-", "-", "-", "-", "-"),
                            f"{ip}\n{t('error_processing_ip')}: {erro}", "unknown")
         self._avancar_ip()
         self._update_action_buttons()
@@ -253,6 +268,7 @@ class AbaIP:
 
     def _scan_stopped_ip(self):
         self.check_button.config(state="normal")
+        self.guardar_no_historico("ip")
         self._update_action_buttons()
 
     def _append_analysis(self):
@@ -270,8 +286,10 @@ class AbaIP:
                 blocos.append(plural(chave, self.bad_ips, separador=","))
             if self.review_ips:
                 blocos.append(plural("ip_whitelist_review", self.review_ips))
-            # "Nada malicioso encontrado" so vale se todas as fontes responderam.
-            if not self.bad_ips and not self.review_ips and not self.incompletos_ip:
+            if self.sem_registro_ip:
+                blocos.append(plural("no_records", self.sem_registro_ip))
+            # "Nada malicioso encontrado" so vale se todas as fontes responderam com dado.
+            elif not (self.bad_ips or self.review_ips or self.incompletos_ip):
                 blocos.append(plural("ip_clean", self.results_ip))
         self.tabela_ip.set_preamble("\n\n".join(blocos), "\n\n".join(avisos))
 
@@ -301,9 +319,11 @@ class AbaIP:
         headers = [
             t("csv_ip"), t("csv_verdict"), t("csv_abuse_score"), t("csv_vt_score"),
             *([t("csv_ibm_score")] if self.ibm_ip_ativo else []),
+            t("csv_md_score"),
             t("csv_domain"), t("csv_country"), t("csv_city"), t("csv_last_report"),
             t("csv_abuse_link"), t("csv_vt_link"),
             *([t("csv_ibm_link")] if self.ibm_ip_ativo else []),
+            t("csv_md_link"),
         ]
         salvar_planilha(self.results_ip, headers, filename="ip_results.xlsx",
                         parent=self.root, titulo=t("select_folder"), coluna_veredito=2,

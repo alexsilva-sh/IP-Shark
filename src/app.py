@@ -13,11 +13,20 @@ from ui.aba_hash import AbaHash
 from ui.aba_ip import AbaIP
 from ui.aba_url import AbaURL
 from ui.navegadores import DriverIndisponivel, DriverPool
-from ui.widgets import Botao, Cartao, MultilineInput, ResultTable, RotuloSecao
+from ui.widgets import Botao, Cartao, Chip, MultilineInput, ResultTable, RotuloSecao
 
 VERSAO = "v3.1"
 
 _log = log.obter("app")
+
+
+def _copiar(valor):
+    """Copia rasa: a varredura seguinte reusa as mesmas listas."""
+    if isinstance(valor, dict):
+        return {chave: list(item) for chave, item in valor.items()}
+    if isinstance(valor, list):
+        return list(valor)
+    return valor
 
 
 class IPCheckerApp(AbaIP, AbaHash, AbaURL):
@@ -33,6 +42,7 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         root.configure(bg=tema.FUNDO)
 
         self.historico = {"ip": [], "hash": [], "url": []}
+        self.entrada_em_curso = {}
 
         # Rodape fixo: a cota so aparecia no relatorio, depois de estourar.
         self.rodape_cota = tk.Label(self.root, bg=tema.FUNDO, fg=tema.TEXTO_SECUNDARIO,
@@ -78,6 +88,7 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
                             (self.url_entry, self.run_url_check)):
             campo.texto.bind("<Control-Return>", lambda e, a=acao: (a(), "break")[1])
         self.root.bind("<Escape>", lambda e: self.cancel_current())
+        self.root.bind("<Button-1>", self._clique_na_janela, add="+")
 
         self._update_action_buttons()
         self.atualizar_rodape_cota()
@@ -149,6 +160,13 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         preferencias.salvar(escala=tema.definir_escala(tema.escala_atual() + passo))
         self._desenhar_historico()
 
+    # Alem da tabela, o que Copiar e Exportar precisam de volta.
+    ESTADO_DA_ABA = {
+        "ip": ("results_ip", "ibm_ip_ativo"),
+        "hash": ("results_hash", "ibm_hash_ativo"),
+        "url": ("results_url", "ip_results_by_domain", "ibm_url_ativo"),
+    }
+
     def registrar_historico(self, aba, texto, quantidade):
         """Guarda a entrada de uma varredura para o analista repetir sem recolar.
 
@@ -163,6 +181,18 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         fila.insert(0, {"texto": texto, "quantidade": quantidade,
                         "hora": datetime.now().strftime("%H:%M")})
         del fila[self.LIMITE_HISTORICO:]
+        self.entrada_em_curso[aba] = fila[0]
+        self._desenhar_historico()
+
+    def guardar_no_historico(self, aba):
+        """Anexa o resultado a entrada da varredura, so em memoria."""
+        entrada = self.entrada_em_curso.pop(aba, None)
+        tabela = self._tabela(aba)
+        if entrada is None or tabela.is_empty():
+            return
+        entrada["resultado"] = tabela.snapshot()
+        entrada["estado"] = {nome: _copiar(getattr(self, nome))
+                             for nome in self.ESTADO_DA_ABA[aba]}
         self._desenhar_historico()
 
     def _desenhar_historico(self):
@@ -180,21 +210,53 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
                 resumo = resumo[:19] + "…"
             if entrada["quantidade"] > 1:
                 resumo += f" +{entrada['quantidade'] - 1}"
+            if entrada.get("resultado"):
+                resumo += "  ↩"
             item = tk.Label(self.lista_historico, text=f"{entrada['hora']}  {resumo}",
                             bg=tema.FUNDO_PAINEL, fg=tema.TEXTO, font=tema.fonte("menor"),
                             anchor="w", cursor="hand2")
             item.pack(fill="x", pady=(0, tema.E1))
-            item.bind("<Button-1>", lambda _e, x=entrada["texto"]: self._restaurar_historico(x))
+            item.bind("<Button-1>", lambda _e, x=entrada: self._restaurar_historico(x))
             item.bind("<Enter>", lambda _e, w=item: w.config(fg=tema.LINK))
             item.bind("<Leave>", lambda _e, w=item: w.config(fg=tema.TEXTO))
 
-    def _restaurar_historico(self, texto):
-        campos = {"ip": self.entry, "hash": self.hash_entry, "url": self.url_entry}
-        campo = campos[self.current_page]
+    def _restaurar_historico(self, entrada):
+        aba = self.current_page
+        campo = {"ip": self.entry, "hash": self.hash_entry, "url": self.url_entry}[aba]
         campo.texto.delete("1.0", tk.END)
-        campo.texto.insert("1.0", texto)
+        campo.texto.insert("1.0", entrada["texto"])
         campo.refresh()
         campo.focus_set()
+        if entrada.get("resultado") and not self._varrendo(aba):
+            self._tabela(aba).restore(entrada["resultado"])
+            for nome, valor in entrada["estado"].items():
+                setattr(self, nome, _copiar(valor))
+            self._rotulo_status(aba).config(text=f"↩ {t('history_restored')}")
+            self._update_action_buttons()
+
+    def _clique_na_janela(self, evento):
+        """Clique em superficie inerte devolve os avisos ao painel.
+
+        Fora da lista: quem trata o proprio clique -- tabela, detalhe, rolagem, divisor, botoes.
+        """
+        tabela = self._tabela(self.current_page)
+        alvo = evento.widget
+        if alvo is tabela.tree or alvo is tabela.detalhe:
+            return
+        if isinstance(alvo, (Botao, Chip, tk.Scrollbar, ttk.Scrollbar, tk.PanedWindow)):
+            return
+        tabela.mostrar_resumo()
+
+    def _tabela(self, aba):
+        return {"ip": self.tabela_ip, "hash": self.tabela_hash, "url": self.tabela_url}[aba]
+
+    def _varrendo(self, aba):
+        return {"ip": self.scanning_ip, "hash": self.scanning_hash,
+                "url": self.scanning_url}[aba]
+
+    def _rotulo_status(self, aba):
+        return {"ip": self.status_label, "hash": self.hash_status_label,
+                "url": self.url_status_label}[aba]
 
     # ---------- navegacao entre abas ----------
 

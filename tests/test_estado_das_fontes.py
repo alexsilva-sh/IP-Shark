@@ -219,33 +219,73 @@ VT_HASH_LIMPO = {"data": {"attributes": {"last_analysis_stats": {"malicious": 0}
                                          "meaningful_name": "nota.txt",
                                          "last_analysis_date": 1700000000}}}
 VT_HASH_RUIM = {"data": {"attributes": {"last_analysis_stats": {"malicious": 7}}}}
+OTX_ZERO = core._otx_contexto({})
 
-h_limpo = reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", "0")
+h_limpo = reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", OTX_ZERO)
 check(h_limpo["status"] == "clean", "hash com todas as fontes respondendo e nada achado -> clean")
 check(h_limpo["nome_arquivo"] == "nota.txt", "nome do arquivo vem do VirusTotal")
-check(reputacao.build_hash_result("a" * 32, VT_HASH_RUIM, "-", "0")["status"] == "bad",
+check(reputacao.build_hash_result("a" * 32, VT_HASH_RUIM, "-", OTX_ZERO)["status"] == "bad",
       "hash detectado pelo VirusTotal -> bad")
-check(reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "high", "0",
+check(reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "high", OTX_ZERO,
                                   estado_ibm=core.FONTE_OK)["status"] == "bad",
       "X-Force 'high' basta para bad")
-check(reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", "4")["status"] == "bad",
-      "pulso no AlienVault basta para bad")
-h_vt_fora = reputacao.build_hash_result("a" * 32, None, "-", "0",
+OTX_EMOTET = core._otx_contexto({"pulse_info": {"count": 4, "pulses": [
+    {"name": "Emotet C2 infrastructure", "adversary": "TA542",
+     "malware_families": [{"display_name": "Emotet"}],
+     "attack_ids": [{"display_name": "T1071 - Application Layer Protocol"}]}]}})
+h_otx = reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", OTX_EMOTET)
+check(h_otx["status"] == "clean",
+      "pulso no AlienVault NAO acusa sozinho: e mencao da comunidade, nao deteccao")
+check(h_otx["alien"]["familias"] == ["Emotet"] and h_otx["alien"]["adversarios"] == ["TA542"],
+      "mas a familia e o grupo entram no resultado -- e o que so o OTX entrega")
+check(reputacao.build_url_result("google.com", 0, "1.0",
+                                 core._otx_contexto({"pulse_info": {"count": 50}}),
+                                 estado_ibm=core.FONTE_OK)["status"] == "clean",
+      "google.com com 50 pulsos e VT/X-Force limpos nao vira malicioso")
+h_vt_fora = reputacao.build_hash_result("a" * 32, None, "-", OTX_ZERO,
                                         estado_vt=core.FONTE_INDISPONIVEL)
 check(h_vt_fora["status"] == "incompleto", "VirusTotal fora do ar -> incompleto, NAO clean")
 check(h_vt_fora["vt_score"] is None, "score de hash sem resposta e None, nunca 0")
-h_sem_registro = reputacao.build_hash_result("a" * 32, {}, "-", "0")
-check(h_sem_registro["status"] == "clean" and h_sem_registro["estados"]["vt"] == core.FONTE_SEM_DADOS,
-      "200 sem atributos -> sem dados, e ninguem acusou nada")
+h_sem_registro = reputacao.build_hash_result("a" * 32, {}, "-", OTX_ZERO)
+check(h_sem_registro["estados"]["vt"] == core.FONTE_SEM_DADOS,
+      "200 sem atributos -> sem dados")
+check(h_sem_registro["status"] == "sem_registros",
+      "nenhuma base conhece o hash -> 'Sem registros', NAO 'Limpo'")
+check(apresentacao.colunas_hash(h_sem_registro, com_ibm=False)[1] == t("verdict_no_records"),
+      "a coluna de veredito diz o mesmo que o cabecalho do relatorio")
+check(t("no_records") in apresentacao.relatorio_hash(h_sem_registro, com_ibm=False).splitlines()[0],
+      "e o relatorio nao afirma que o arquivo e legitimo")
+check(apresentacao.VERDICT_TAGS["sem_registros"] != apresentacao.VERDICT_TAGS["clean"],
+      "na tabela nao sai em verde de limpo")
 
-u_limpo = reputacao.build_url_result("exemplo.com", 0, "-", "0")
+# Uma fonte que analisou e nao achou nada ainda vale como limpo.
+h_uma_analisou = reputacao.build_hash_result("a" * 32, {}, "-", OTX_ZERO,
+                                             md={"detectados": 0, "total": 20},
+                                             estado_md=core.FONTE_OK)
+check(h_uma_analisou["status"] == "clean",
+      "com o MetaDefender analisando e achando zero, segue limpo")
+SEM = core.FONTE_SEM_DADOS
+for nome, data, colunas in (
+    ("IP", reputacao.build_ip_result("1.2.3.4", None, None, None, "c", "p", "d",
+                                     estado_abuse=SEM, estado_vt=SEM, estado_ibm=SEM,
+                                     estado_md=SEM), apresentacao.colunas_ip),
+    ("hash", reputacao.build_hash_result("a" * 40, {}, "-", OTX_ZERO, estado_ibm=SEM,
+                                        estado_md=SEM), apresentacao.colunas_hash),
+    ("dominio", reputacao.build_url_result("nunca-vista.com", None, "-", OTX_ZERO,
+                                          estado_vt=SEM, estado_ibm=SEM, estado_md=SEM),
+     apresentacao.colunas_url),
+):
+    check(data["status"] == "sem_registros" and colunas(data, "-")[1] == t("verdict_no_records"),
+          f"a regra vale para {nome}, nao so para hash")
+
+u_limpo = reputacao.build_url_result("exemplo.com", 0, "-", OTX_ZERO)
 check(u_limpo["status"] == "clean", "dominio com tudo respondendo e nada achado -> clean")
-check(reputacao.build_url_result("exemplo.com", 3, "-", "0")["status"] == "bad",
+check(reputacao.build_url_result("exemplo.com", 3, "-", OTX_ZERO)["status"] == "bad",
       "dominio detectado pelo VirusTotal -> bad")
-check(reputacao.build_url_result("exemplo.com", 0, "8.6", "0",
+check(reputacao.build_url_result("exemplo.com", 0, "8.6", OTX_ZERO,
                                  estado_ibm=core.FONTE_OK)["status"] == "bad",
       "nota do X-Force >= 2 -> bad")
-check(reputacao.build_url_result("exemplo.com", 0, "1.0", "0",
+check(reputacao.build_url_result("exemplo.com", 0, "1.0", OTX_ZERO,
                                  estado_ibm=core.FONTE_OK)["status"] == "clean",
       "nota do X-Force baixa nao acusa sozinha")
 u_fora = reputacao.build_url_result("exemplo.com", None, "-", None,
@@ -326,13 +366,131 @@ check(t("count_valid") in contagem and t("count_invalid") in contagem,
       f"contador separa valido de invalido como as outras abas ({contagem})")
 check(apresentacao.contar_dominios("") == "", "campo vazio nao mostra contador")
 
-print("\n[7] AlienVault: 404 e zero pulsos, nao indisponibilidade")
+print("\n[6e] MetaDefender: contagem de quem acusou, com o total quando existe")
+core.METADEFENDER_API_KEY = "k"
+MD_HASH = {"scan_results": {"total_detected_avs": 12, "total_avs": 20}}
+MD_IP = {"lookup_results": {"detected_by": 2,
+                            "sources": [{"provider": "webroot", "assessment": "malicious"},
+                                        {"provider": "x", "assessment": "phishing"}]}}
+mockar(RespostaFake(200, MD_HASH))
+md, estado = core.check_hash_metadefender("a" * 32)
+check((md["detectados"], md["total"], estado) == (12, 20, core.FONTE_OK),
+      f"hash: le motores que acusaram e total de motores ({md})")
+check(apresentacao.md_placar({"md": md}) == "12/20",
+      "a tela mostra a proporcao, nao o numero solto")
+mockar(RespostaFake(200, MD_IP))
+md_ip, estado = core.check_ip_metadefender("8.8.8.8")
+check((md_ip["detectados"], md_ip["total"], estado) == (2, None, core.FONTE_OK),
+      "IP: le a contagem de listas de reputacao, que nao tem total")
+check(md_ip["avaliacoes"] == ["malicious", "phishing"], "guarda o que cada lista disse")
+check(apresentacao.md_placar({"md": md_ip}) == "2", "sem total, mostra so a contagem")
+
+mockar(RespostaFake(200, {"algo": "que nao sabemos ler"}))
+md_estranho, estado = core.check_hash_metadefender("a" * 32)
+check(md_estranho is None and estado == core.FONTE_INDISPONIVEL,
+      "200 em formato desconhecido vira fonte sem resposta, NAO zero deteccao")
 mockar(RespostaFake(404))
-_score, _link, estado = core.check_hash_alienvault("a" * 32)
-check((_score, estado) == ("0", core.FONTE_OK), "indicador ausente do OTX -> 0 pulsos, fonte ok")
+_md, estado = core.check_hash_metadefender("a" * 32)
+check(estado == core.FONTE_SEM_DADOS, "404: hash que o MetaDefender nao conhece e 'sem registros'")
+
+print("\n[6f] Deteccao do MetaDefender decide veredito nas tres abas")
+h_md = reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", OTX_ZERO,
+                                   md={"detectados": 12, "total": 20}, estado_md=core.FONTE_OK)
+check(h_md["status"] == "bad", "hash limpo no VT mas acusado por 12 motores -> bad")
+u_md = reputacao.build_url_result("mau.com", 0, "1.0", OTX_ZERO, estado_ibm=core.FONTE_OK,
+                                  md={"detectados": 3}, estado_md=core.FONTE_OK)
+check(u_md["status"] == "bad", "dominio acusado por 3 listas -> bad")
+ip_md = reputacao.build_ip_result("9.9.9.9", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "d",
+                                  estado_ibm=None, md={"detectados": 1}, estado_md=core.FONTE_OK)
+check(ip_md["status"] == "bad", "IP acusado por 1 lista -> bad")
+ip_md_limpo = reputacao.build_ip_result("9.9.9.9", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "d",
+                                        estado_ibm=None, md={"detectados": 0, "total": 20},
+                                        estado_md=core.FONTE_OK)
+check(ip_md_limpo["status"] == "clean", "zero deteccao com tudo respondendo -> clean")
+ip_md_fora = reputacao.build_ip_result("9.9.9.9", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "d",
+                                       estado_ibm=None, estado_md=core.FONTE_INDISPONIVEL)
+check(ip_md_fora["status"] == "incompleto" and
+      "MetaDefender" in ip_md_fora["fontes_indisponiveis"],
+      "MetaDefender fora do ar -> incompleto, NAO clean")
+ip_sem_md = reputacao.build_ip_result("9.9.9.9", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "d",
+                                      estado_ibm=None)
+check(ip_sem_md["status"] == "clean" and not ip_sem_md["fontes_indisponiveis"],
+      "fonte nao consultada nao vira fonte faltando")
+check(reputacao.LINK_MD in apresentacao.relatorio_ip(ip_md) and
+      reputacao.LINK_MD in apresentacao.relatorio_hash(h_md) and
+      reputacao.LINK_MD in apresentacao.relatorio_url(u_md),
+      "o relatorio das tres abas leva o link do MetaDefender")
+check(ip_sem_md["links"]["md"] is None and
+      reputacao.LINK_MD not in apresentacao.relatorio_ip(ip_sem_md),
+      "sem consultar a fonte, o link nao entra no relatorio")
+
+print("\n[7] AlienVault: contexto no lugar da contagem crua")
+mockar(RespostaFake(404))
+alien, _link, estado = core.check_hash_alienvault("a" * 32)
+check((alien["pulsos"], estado) == (0, core.FONTE_OK),
+      "indicador ausente do OTX -> 0 pulsos, fonte ok")
 mockar(RespostaFake(429))
-_score, _link, estado = core.check_hash_alienvault("a" * 32)
-check(_score is None and estado == core.FONTE_COTA, "429 no OTX -> sem score e cota")
+alien, _link, estado = core.check_hash_alienvault("a" * 32)
+check(alien is None and estado == core.FONTE_COTA, "429 no OTX -> sem contexto e cota")
+
+OTX_COMPLETO = {"pulse_info": {"count": 7, "pulses": [
+    {"name": "Despejo de IOCs de hoje", "modified": "2026-07-28T10:00:00"},
+    {"name": "Campanha TA577", "modified": "2026-01-05T10:00:00",
+     "malware_families": ["Qakbot", {"display_name": "Cobalt Strike"}], "adversary": "TA577",
+     "attack_ids": [{"id": "T1204", "display_name": "T1204 - User Execution"}]},
+    {"name": "Relato sem data"}]},
+    "validation": [{"source": "alexa", "name": "Alexa top 1M"}]}
+mockar(RespostaFake(200, OTX_COMPLETO))
+alien, _link, estado = core.check_hash_alienvault("a" * 32)
+check(alien["familias"] == ["Qakbot", "Cobalt Strike"],
+      f"familia sai tanto de texto quanto de objeto, sem repetir ({alien['familias']})")
+check(alien["adversarios"] == ["TA577"], "grupo atribuido entra no resultado")
+check(alien["tecnicas"] == ["T1204 - User Execution"], "tecnica MITRE tambem")
+check(alien["titulo"] == "Campanha TA577",
+      f"vale o relato que informa, nao o mais recente ({alien['titulo']!r})")
+
+recencia = core._otx_contexto({"pulse_info": {"pulses": [
+    {"name": "Qakbot antigo", "malware_families": ["Qakbot"], "modified": "2026-01-01"},
+    {"name": "Qakbot recente", "malware_families": ["Qakbot"], "modified": "2026-07-01"}]}})
+check(recencia["titulo"] == "Qakbot recente",
+      f"entre relatos igualmente informativos, o mais recente ({recencia['titulo']!r})")
+sem_nada = core._otx_contexto({"pulse_info": {"pulses": [
+    {"name": "Despejo antigo", "modified": "2026-01-01"},
+    {"name": "Despejo recente", "modified": "2026-07-01"}]}})
+check(sem_nada["titulo"] == "Despejo recente",
+      "sem nada que informe, a data volta a decidir")
+check(alien["legitimo"] == ["Alexa top 1M"],
+      "a lista de legitimos do OTX e lida -- e o sinal que faltava no google.com")
+
+dados_otx = reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", alien)
+linha_av = apresentacao.linha_alienvault(dados_otx, core.FONTE_OK)
+check(linha_av.startswith(f"{t('alien_score')}: 7 {t('count_pulses')}") and
+      t("otx_pulses") in linha_av and "Campanha TA577" in linha_av,
+      f"contagem e relato na mesma linha da fonte ({linha_av})")
+check("(+6)" in linha_av, "e diz quantos outros relatos existem, em vez de enfileirar titulos")
+um_so = reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-",
+                                    core._otx_contexto({"pulse_info": {"count": 1, "pulses": [
+                                        {"name": "TrojanDownloader:Win32/Tsunovest.A"}]}}))
+check(apresentacao.linha_alienvault(um_so, core.FONTE_OK) ==
+      f"{t('alien_score')}: 1 {t('count_pulse')} | {t('otx_pulses')} "
+      "TrojanDownloader:Win32/Tsunovest.A",
+      "com um unico relato nao sobra '(+0)' nem plural errado")
+check("|" not in apresentacao.linha_alienvault(dados_otx, core.FONTE_INDISPONIVEL),
+      "fonte que falhou nao ganha relato: a linha diz so que falhou")
+
+linhas = apresentacao.linhas_otx(dados_otx)
+check(any(t("otx_family") in linha and "Qakbot" in linha for linha in linhas),
+      "familia continua em linha propria, agregada de todos os pulses")
+check(any(t("otx_adversary") in linha and "TA577" in linha for linha in linhas),
+      "e o grupo atribuido")
+check(not any(t("otx_pulses") in linha for linha in linhas),
+      "o relato saiu das linhas soltas -- agora vive junto da contagem")
+check(apresentacao.alien_coluna(dados_otx) == "Qakbot",
+      "a celula mostra a familia do relato escolhido, nao o numero de pulsos")
+check(apresentacao.alien_coluna(reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", OTX_ZERO))
+      == "0", "sem familia conhecida, a celula volta a contagem")
+check(not apresentacao.linhas_otx(reputacao.build_hash_result("a" * 32, VT_HASH_LIMPO, "-", OTX_ZERO)),
+      "indicador sem contexto nao gera linha vazia no relatorio")
 
 print("\n[8] VirusTotal de URL separa 'nao catalogada' de 'falhou'")
 mockar(RespostaFake(404))

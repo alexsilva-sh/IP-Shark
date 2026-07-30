@@ -6,7 +6,7 @@ from tkinter import messagebox, ttk
 
 import pyperclip
 
-from core.api import check_hash_alienvault, check_hash_virustotal
+from core.api import check_hash_alienvault, check_hash_metadefender, check_hash_virustotal
 from core.navegador import check_hash_ibm, check_hash_joesandbox
 from core.reputacao import build_hash_result
 from i18n import plural, t
@@ -37,6 +37,7 @@ class AbaHash:
         self.bad_hashes = set()
         self.ignorados_hash = []
         self.incompletos_hash = set()
+        self.sem_registro_hash = set()
         self.cota_hash = set()
         self.total_hash = self.feitos_hash = 0
 
@@ -82,6 +83,7 @@ class AbaHash:
             ("vt", "col_vt", 95, "center"),
             ("ibm", "col_ibm", 85, "center"),
             ("alien", "col_alien", 110, "center"),
+            ("md", "col_md", 120, "center"),
         ])
 
         self.hash_copy_button = Botao(self.hash_button_frame, text=t("btn_copy"),
@@ -124,6 +126,8 @@ class AbaHash:
         self.registrar_historico("hash", self.hash_entry.get_text(), len(hash_list))
         self.results_hash = []
         self.stop_flag = False
+        self.incompletos_hash = set()
+        self.sem_registro_hash = set()
         self.currently_processing_hashes.clear()
         self.hash_status_label.config(text="")
         self.scanning_hash = True
@@ -149,6 +153,8 @@ class AbaHash:
                     self.bad_hashes.add(h)
                 elif status == "incompleto":
                     self.incompletos_hash.add(h)
+                elif status == "sem_registros":
+                    self.sem_registro_hash.add(h)
                 self.cota_hash.update(fontes_em_cota(estados))
                 self._track_processing(self.currently_processing_hashes, h, False,
                                        self.update_status_label_hash)
@@ -166,8 +172,9 @@ class AbaHash:
             ibm_score, estado_ibm = self._consultar_ibm(
                 lambda d, alvo: check_hash_ibm(d, alvo)[1], h)
 
-        alien_score, _alien_link, estado_alien = check_hash_alienvault(h)
+        alien, _alien_link, estado_alien = check_hash_alienvault(h)
         virustotal_result, estado_vt = check_hash_virustotal(h)
+        md, estado_md = check_hash_metadefender(h)
 
         joe_found = False
         try:
@@ -176,9 +183,9 @@ class AbaHash:
         except DriverIndisponivel:
             pass
 
-        data = build_hash_result(h, virustotal_result, ibm_score, alien_score, joe_found,
+        data = build_hash_result(h, virustotal_result, ibm_score, alien, joe_found,
                                  estado_vt=estado_vt, estado_ibm=estado_ibm,
-                                 estado_alien=estado_alien)
+                                 estado_alien=estado_alien, md=md, estado_md=estado_md)
         self.results_hash.append(linha_planilha_hash(data, com_ibm))
         return (relatorio_hash(data, com_ibm, index=index, total=total_hashes),
                 data["status"], colunas_hash(data, com_ibm), data["estados"])
@@ -196,6 +203,7 @@ class AbaHash:
 
     def _scan_stopped_hash(self):
         self.hash_button_action.config(state="normal")
+        self.guardar_no_historico("hash")
         self._update_action_buttons()
 
     def _append_analysis_hash(self):
@@ -211,7 +219,9 @@ class AbaHash:
             if self.bad_hashes:
                 chave = "hash_bad_mss" if self.mss_var_hash.get() else "hash_bad_no_mss"
                 blocos.append(plural(chave, self.bad_hashes))
-            elif not self.incompletos_hash:
+            if self.sem_registro_hash:
+                blocos.append(plural("no_records", self.sem_registro_hash))
+            elif not (self.bad_hashes or self.incompletos_hash):
                 blocos.append(plural("hash_clean", self.results_hash))
         self.tabela_hash.set_preamble("\n\n".join(blocos), "\n\n".join(avisos))
 
@@ -242,9 +252,10 @@ class AbaHash:
         headers = [
             t("csv_hash"), t("csv_verdict"), t("csv_vt_score"),
             *([t("csv_ibm_score")] if self.ibm_hash_ativo else []),
-            t("csv_alien_score"), t("csv_file_name"), t("csv_last_analysis"), t("csv_vt_link"),
+            t("csv_alien_score"), t("csv_md_score"),
+            t("csv_file_name"), t("csv_last_analysis"), t("csv_vt_link"),
             *([t("csv_ibm_link")] if self.ibm_hash_ativo else []),
-            t("csv_alien_link"), t("csv_joe_link"),
+            t("csv_alien_link"), t("csv_md_link"), t("csv_joe_link"),
         ]
         salvar_planilha(self.results_hash, headers, filename="hash_results.xlsx",
                         parent=self.root, titulo=t("select_folder"), coluna_veredito=2,

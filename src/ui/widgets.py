@@ -307,11 +307,16 @@ class MultilineInput(tk.Frame):
 class ResultTable(tk.Frame):
     """Tabela ordenavel de resultados com painel de detalhe da linha selecionada."""
 
+    LARGURA_MAX = 460   # teto: nome gigante nao empurra as colunas seguintes da tela
+    FOLGA_CELULA = 18
+    RECUO_ARVORE = 24
+
     def __init__(self, master, colunas, altura_detalhe=9):
         super().__init__(master, bg=master["bg"])
         self.colunas = colunas
         self._textos = {}
         self._ordem = []
+        self._linhas = []
         self._preambulo = ""
         self._avisos = ""
         self._ordenacao = (None, False)
@@ -321,7 +326,7 @@ class ResultTable(tk.Frame):
         painel.pack(fill="both", expand=True)
 
         quadro_tabela = tk.Frame(painel, bg=tema.FUNDO)
-        ids = [c[0] for c in colunas]
+        self._ids = ids = [c[0] for c in colunas]
         self.tree = ttk.Treeview(quadro_tabela, columns=ids[1:], show="tree headings",
                                  style="Result.Treeview", selectmode="browse")
         barra = ttk.Scrollbar(quadro_tabela, orient="vertical", command=self.tree.yview)
@@ -333,12 +338,11 @@ class ResultTable(tk.Frame):
         barra_h.pack(side="bottom", fill="x")
         self.tree.pack(side="left", fill="both", expand=True)
 
+        # Largura sai do conteudo (_encaixar); esticada, a ultima coluna parava longe do resto.
         self.tree.column("#0", width=colunas[0][2], minwidth=120, anchor="w", stretch=False)
         self.tree.heading("#0", anchor="w", command=lambda: self._ordenar("#0"))
-        for indice, (cid, _chave, largura, ancora) in enumerate(colunas[1:]):
-            # A ultima coluna estica para absorver a sobra; as demais mantem a largura.
-            ultima = indice == len(colunas) - 2
-            self.tree.column(cid, width=largura, minwidth=60, anchor=ancora, stretch=ultima)
+        for cid, _chave, largura, ancora in colunas[1:]:
+            self.tree.column(cid, width=largura, minwidth=60, anchor=ancora, stretch=False)
             self.tree.heading(cid, anchor=ancora, command=lambda c=cid: self._ordenar(c))
 
         self.tree.bind("<<TreeviewSelect>>", self._ao_selecionar)
@@ -375,10 +379,7 @@ class ResultTable(tk.Frame):
             self.detalhe.tag_configure("aviso", foreground=tema.REVISAR)
             self.detalhe.tag_configure("aviso_titulo", foreground=tema.REVISAR,
                                        font=tema.fonte("mono_forte"))
-            fator = tema.fator_escala()
-            self.tree.column("#0", width=int(self.colunas[0][2] * fator))
-            for cid, _chave, largura, _ancora in self.colunas[1:]:
-                self.tree.column(cid, width=int(largura * fator))
+            self._encaixar_tudo()
             for filho in self.winfo_children():
                 filho.config(bg=tema.FUNDO)
         except tk.TclError:
@@ -395,9 +396,11 @@ class ResultTable(tk.Frame):
         self.tree.delete(*self.tree.get_children(""))
         self._textos.clear()
         self._ordem.clear()
+        self._linhas.clear()
         self._preambulo = ""
         self._avisos = ""
         self._ordenacao = (None, False)
+        self._larguras_base()
         self._escrever([(t("detail_hint"), "dica")])
 
     def is_empty(self):
@@ -409,9 +412,47 @@ class ResultTable(tk.Frame):
                          tags=(VERDICT_TAGS.get(status, "clean"),), open=True)
         self._textos[iid] = texto
         self._ordem.append(iid)
+        self._linhas.append((iid, valores, texto, status, parent))
+        self._encaixar(valores, parent)
         self.tree.see(iid)
         if len(self._ordem) == 1:
             self.tree.selection_set(iid)
+
+    def _larguras_base(self):
+        fator = tema.fator_escala()
+        for cid, _chave, largura, _ancora in self.colunas:
+            self.tree.column(cid, width=int(largura * fator))
+
+    def _encaixar(self, valores, parent=""):
+        """Alarga a coluna para caber o que chegou. So cresce: encolher faria a tabela pular."""
+        try:
+            fonte = tema.fonte("mono")
+            teto = int(self.LARGURA_MAX * tema.fator_escala())
+            for indice, (cid, valor) in enumerate(zip(self._ids, valores)):
+                desejada = fonte.measure(str(valor)) + self.FOLGA_CELULA
+                if indice == 0:
+                    desejada += self.RECUO_ARVORE * (2 if parent else 1)
+                desejada = min(desejada, teto)
+                if desejada > int(self.tree.column(cid, "width")):
+                    self.tree.column(cid, width=desejada)
+        except tk.TclError:
+            pass   # tabela ja destruida
+
+    def _encaixar_tudo(self):
+        self._larguras_base()
+        for _iid, valores, _texto, _status, parent in self._linhas:
+            self._encaixar(valores, parent)
+
+    def snapshot(self):
+        """O que basta para remontar a tabela depois."""
+        return {"linhas": list(self._linhas), "preambulo": self._preambulo,
+                "avisos": self._avisos}
+
+    def restore(self, estado):
+        self.clear()
+        for linha in estado["linhas"]:
+            self.add(*linha)
+        self.set_preamble(estado["preambulo"], estado["avisos"])
 
     def set_preamble(self, texto, avisos=""):
         """`texto` abre o relatorio copiado; `avisos` fica so na tela.
@@ -420,8 +461,7 @@ class ResultTable(tk.Frame):
         """
         self._preambulo = texto or ""
         self._avisos = avisos or ""
-        if self._blocos_resumo():
-            self.mostrar_resumo()
+        self.mostrar_resumo()
 
     def _blocos_resumo(self):
         blocos = []
@@ -433,16 +473,29 @@ class ResultTable(tk.Frame):
         return blocos
 
     def mostrar_resumo(self):
-        """Volta o painel para os avisos e o resumo, sem nenhuma linha selecionada."""
+        """Volta o painel aos avisos, sem linha selecionada. Sem resumo guardado, nao faz nada."""
+        blocos = self._blocos_resumo()
+        if not blocos:
+            return
         selecao = self.tree.selection()
         if selecao:
             self.tree.selection_remove(*selecao)
-        self._escrever(self._blocos_resumo() or [(t("detail_hint"), "dica")])
+        self._escrever(blocos)
 
     def _ao_clicar(self, evento):
-        # "nothing" e a area vazia abaixo das linhas; no cabecalho o clique so ordena.
-        if self.tree.identify_region(evento.x, evento.y) == "nothing":
+        """Desfaz a selecao: clique na area vazia, ou de novo na linha ja selecionada."""
+        if not self._blocos_resumo():
+            return None
+        regiao = self.tree.identify_region(evento.x, evento.y)
+        if regiao == "nothing":
             self.mostrar_resumo()
+        elif (regiao in ("tree", "cell")
+                and self.tree.identify_row(evento.y) in self.tree.selection()
+                # Na setinha o analista quer abrir o dominio, nao perder a selecao.
+                and "indicator" not in self.tree.identify_element(evento.x, evento.y)):
+            self.mostrar_resumo()
+            return "break"   # senao a classe do Treeview reseleciona a linha
+        return None
 
     def warnings(self):
         return self._avisos

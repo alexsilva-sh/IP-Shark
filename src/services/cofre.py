@@ -26,6 +26,7 @@ CHAVES = (
     ("VIRUSTOTAL_API_KEY", "VirusTotal", "https://www.virustotal.com/gui/my-apikey"),
     ("IPINFO_API_KEY", "IPinfo", "https://ipinfo.io/account/token"),
     ("ALIENVAULT_API_KEY", "AlienVault OTX", "https://otx.alienvault.com/api"),
+    ("METADEFENDER_API_KEY", "MetaDefender Cloud", "https://metadefender.com/"),
 )
 
 _NO_WINDOWS = sys.platform == "win32"

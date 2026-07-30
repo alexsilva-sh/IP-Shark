@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+from urllib.parse import quote
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -82,6 +83,7 @@ URL_VT_ARQUIVO = "https://www.virustotal.com/api/v3/files/{}"
 URL_VT_URL = "https://www.virustotal.com/api/v3/urls/{}"
 URL_OTX = "https://otx.alienvault.com/api/v1/indicators/{}/{}/general"
 URL_IPINFO = "https://ipinfo.io/{}/json"
+URL_MD = "https://api.metadefender.com/v4/{}/{}"
 
 # O que cada API conta sobre a propria cota: {fonte: {"restante": int, "espera": int}}.
 _cotas = {}
@@ -133,6 +135,7 @@ ABUSEIPDB_API_KEY = None
 VIRUSTOTAL_API_KEY = None
 IPINFO_API_KEY = None
 ALIENVAULT_API_KEY = None
+METADEFENDER_API_KEY = None
 
 _lock_chaves = threading.Lock()
 _mtime_store = -1
@@ -142,7 +145,7 @@ _chaves_carregadas = False
 def reload_api_keys(forcar=False):
     """Recarrega as chaves do cofre, decifrando apenas quando o arquivo muda."""
     global ABUSEIPDB_API_KEY, VIRUSTOTAL_API_KEY, IPINFO_API_KEY, ALIENVAULT_API_KEY
-    global _mtime_store, _chaves_carregadas
+    global METADEFENDER_API_KEY, _mtime_store, _chaves_carregadas
     try:
         mtime = os.path.getmtime(cofre.caminho_store())
     except OSError:
@@ -157,6 +160,7 @@ def reload_api_keys(forcar=False):
         VIRUSTOTAL_API_KEY = dados.get("VIRUSTOTAL_API_KEY") or None
         IPINFO_API_KEY = dados.get("IPINFO_API_KEY") or None
         ALIENVAULT_API_KEY = dados.get("ALIENVAULT_API_KEY") or None
+        METADEFENDER_API_KEY = dados.get("METADEFENDER_API_KEY") or None
 
 
 def carregar_chaves_salvas():
@@ -257,8 +261,64 @@ def check_url_virustotal(url):
     return {"score": score, "not_found": False}, FONTE_OK
 
 
+OTX_MAX_ROTULOS = 5
+
+
+def _rotulos(itens, limite=OTX_MAX_ROTULOS):
+    """Nomes de uma lista que o OTX manda ora como texto, ora como objeto."""
+    saida = []
+    for item in itens or []:
+        if isinstance(item, str):
+            nome = item
+        elif isinstance(item, dict):
+            nome = item.get("display_name") or item.get("name") or item.get("id") or ""
+        else:
+            nome = ""
+        nome = str(nome).strip()
+        if nome and nome not in saida:
+            saida.append(nome)
+    return saida[:limite]
+
+
+def _relevancia(pulse):
+    """Ordena pulse por quanto ele informa, e so depois por data.
+
+    Sem isso o relato escolhido podia ser um despejo automatico de IOCs, que nao diz nada,
+    em vez do relatorio de campanha que nomeia malware e grupo.
+    """
+    return (bool(pulse.get("malware_families")),
+            bool(pulse.get("adversary")),
+            bool(pulse.get("attack_ids")),
+            bool(pulse.get("references")),
+            str(pulse.get("modified") or pulse.get("created") or ""))
+
+
+def _otx_contexto(dados):
+    """Familia, grupo, tecnica MITRE e o relato mais informativo do OTX."""
+    info = safe_get(dados, "pulse_info") or {}
+    pulses = [p for p in (info.get("pulses") or []) if isinstance(p, dict)]
+    pulses.sort(key=_relevancia, reverse=True)
+    familias, tecnicas, adversarios, titulos = [], [], [], []
+    for pulse in pulses:
+        familias += _rotulos(pulse.get("malware_families"))
+        tecnicas += _rotulos(pulse.get("attack_ids"), limite=OTX_MAX_ROTULOS * 2)
+        if pulse.get("adversary"):
+            adversarios.append(str(pulse["adversary"]).strip())
+        if pulse.get("name"):
+            titulos.append(str(pulse["name"]).strip())
+    return {
+        "pulsos": _inteiro(info.get("count")) or len(pulses),
+        "familias": _rotulos(familias),
+        "tecnicas": _rotulos(tecnicas, limite=OTX_MAX_ROTULOS * 2),
+        "adversarios": _rotulos(adversarios, limite=3),
+        "titulo": titulos[0] if titulos else "",
+        # `validation` presente = indicador em lista de legitimos (Alexa, Majestic).
+        "legitimo": _rotulos(safe_get(dados, "validation"), limite=3),
+    }
+
+
 def _alienvault(tipo, indicador, link):
-    """Consulta o OTX. Devolve (contagem_de_pulsos, link, estado)."""
+    """Consulta o OTX. Devolve (contexto, link, estado)."""
     reload_api_keys()
     if not ALIENVAULT_API_KEY:
         return None, link, FONTE_SEM_CHAVE
@@ -267,10 +327,10 @@ def _alienvault(tipo, indicador, link):
         fonte="AlienVault",
         headers={"X-OTX-API-KEY": ALIENVAULT_API_KEY, "Accept": "application/json"})
     if estado == FONTE_SEM_DADOS:
-        return "0", link, FONTE_OK   # indicador ausente do OTX significa zero pulsos
+        return _otx_contexto({}), link, FONTE_OK   # ausente do OTX e zero pulsos
     if estado != FONTE_OK:
         return None, link, estado
-    return str(safe_get(dados, "pulse_info", "count", default=0)), link, FONTE_OK
+    return _otx_contexto(dados), link, FONTE_OK
 
 
 def check_hash_alienvault(hash_str):
@@ -279,6 +339,52 @@ def check_hash_alienvault(hash_str):
 
 def check_url_alienvault(url):
     return _alienvault("url", url, f"https://otx.alienvault.com/indicator/url/{url}")
+
+
+def _md_leitura(dados):
+    """(detectados, total, avaliacoes) do MetaDefender: motores no hash, listas no resto.
+
+    Formato nao reconhecido devolve None, que virara fonte sem resposta, nunca zero.
+    """
+    scan = safe_get(dados, "scan_results")
+    if isinstance(scan, dict):
+        return _inteiro(scan.get("total_detected_avs")), _inteiro(scan.get("total_avs")), []
+    lookup = safe_get(dados, "lookup_results")
+    if isinstance(lookup, dict):
+        fontes = lookup.get("sources") or []
+        avaliacoes = sorted({str(f.get("assessment")).strip().lower()
+                             for f in fontes if isinstance(f, dict) and f.get("assessment")})
+        return _inteiro(lookup.get("detected_by")), None, avaliacoes
+    return None, None, []
+
+
+def _metadefender(tipo, indicador):
+    """{detectados, total, avaliacoes} do MetaDefender, ou None com o motivo."""
+    reload_api_keys()
+    if not METADEFENDER_API_KEY:
+        return None, FONTE_SEM_CHAVE
+    dados, estado = _consultar(URL_MD.format(tipo, quote(str(indicador), safe="")),
+                               fonte="MetaDefender",
+                               headers={"apikey": METADEFENDER_API_KEY,
+                                        "Accept": "application/json"})
+    if estado != FONTE_OK:
+        return None, estado
+    detectados, total, avaliacoes = _md_leitura(dados)
+    if detectados is None:
+        return None, FONTE_INDISPONIVEL   # 200 em formato que nao sabemos ler
+    return {"detectados": detectados, "total": total, "avaliacoes": avaliacoes}, FONTE_OK
+
+
+def check_hash_metadefender(hash_str):
+    return _metadefender("hash", hash_str)
+
+
+def check_ip_metadefender(ip):
+    return _metadefender("ip", ip)
+
+
+def check_dominio_metadefender(dominio):
+    return _metadefender("domain", dominio)
 
 
 def get_location(ip):
@@ -307,6 +413,8 @@ def _sondas(chaves):
          None, {"token": chaves.get("IPINFO_API_KEY")}),
         ("ALIENVAULT_API_KEY", "AlienVault", URL_OTX.format("IPv4", IP_TESTE),
          {"X-OTX-API-KEY": chaves.get("ALIENVAULT_API_KEY"), "Accept": "application/json"}, None),
+        ("METADEFENDER_API_KEY", "MetaDefender", URL_MD.format("ip", IP_TESTE),
+         {"apikey": chaves.get("METADEFENDER_API_KEY"), "Accept": "application/json"}, None),
     )
 
 

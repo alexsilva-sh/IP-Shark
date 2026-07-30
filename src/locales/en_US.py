@@ -114,6 +114,14 @@ STRINGS = {
     "vt_score": "VirusTotal score",
     "ibm_score": "IBM score",
     "alien_score": "AlienVault",
+    "md_score": "MetaDefender score",
+    "count_pulse": "pulse",
+    "count_pulses": "pulses",
+    "otx_family": "Malware family",
+    "otx_adversary": "Attributed group",
+    "otx_mitre": "MITRE ATT&CK techniques",
+    "otx_pulses": "Reported as",
+    "otx_known_good": "Listed as known good on OTX",
 
     # Hash details
     "file_name": "File name",
@@ -220,6 +228,7 @@ STRINGS = {
     "quota_footer": "Quota left today",
     "history_title": "Session history",
     "history_empty": "This session's queries show up here. Nothing is written to disk.",
+    "history_restored": "Result restored from the session history.",
     "cfg_save": "Save",
     "cfg_cancel": "Cancel",
     "cfg_saved_title": "Keys saved",
@@ -249,6 +258,7 @@ STRINGS = {
     "csv_vt_score": "VirusTotal score",
     "csv_ibm_score": "IBM score",
     "csv_alien_score": "AlienVault",
+    "csv_md_score": "MetaDefender",
     "csv_country": "Country",
     "csv_city": "City",
     "csv_last_report": "Last report",
@@ -258,6 +268,7 @@ STRINGS = {
     "csv_vt_link": "VirusTotal link",
     "csv_ibm_link": "IBM link",
     "csv_alien_link": "AlienVault link",
+    "csv_md_link": "MetaDefender link",
     "csv_joe_link": "JoeSandbox link",
     # Results table
     "col_verdict": "Verdict",
@@ -265,6 +276,7 @@ STRINGS = {
     "col_vt": "VirusTotal",
     "col_ibm": "X-Force",
     "col_alien": "AlienVault",
+    "col_md": "MetaDefender",
     "col_country": "Country",
     "col_file": "File",
     "verdict_clean": "● Clean",
@@ -273,6 +285,15 @@ STRINGS = {
     "verdict_bad": "✖ Malicious",
     "verdict_unknown": "○ Unavailable",
     "verdict_incomplete": "▲ Incomplete analysis",
+    "verdict_no_records": "○ No records",
+    "no_records_one": (
+        "The following indicator was not found on any of the queried sources: {lista}\n"
+        "The absence of a record does not confirm the indicator is legitimate."
+    ),
+    "no_records_many": (
+        "The following indicators were not found on any of the queried sources: {lista}\n"
+        "The absence of records does not confirm the indicators are legitimate."
+    ),
 
     # X-Force browser pool
     "drivers_degraded": (

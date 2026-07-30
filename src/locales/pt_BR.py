@@ -117,6 +117,14 @@ STRINGS = {
     "vt_score": "Score VirusTotal",
     "ibm_score": "Score IBM",
     "alien_score": "AlienVault",
+    "md_score": "Score MetaDefender",
+    "count_pulse": "pulso",
+    "count_pulses": "pulsos",
+    "otx_family": "Família de malware",
+    "otx_adversary": "Grupo atribuído",
+    "otx_mitre": "Técnicas MITRE ATT&CK",
+    "otx_pulses": "Relatado como",
+    "otx_known_good": "Consta em lista de legítimos do OTX",
 
     # Hash details
     "file_name": "Nome do arquivo",
@@ -223,6 +231,7 @@ STRINGS = {
     "quota_footer": "Cota restante hoje",
     "history_title": "Histórico da sessão",
     "history_empty": "As consultas desta sessão aparecem aqui. Nada é gravado em disco.",
+    "history_restored": "Resultado recuperado do histórico da sessão.",
     "cfg_save": "Salvar",
     "cfg_cancel": "Cancelar",
     "cfg_saved_title": "Chaves salvas",
@@ -252,6 +261,7 @@ STRINGS = {
     "csv_vt_score": "Score VirusTotal",
     "csv_ibm_score": "Score IBM",
     "csv_alien_score": "AlienVault",
+    "csv_md_score": "MetaDefender",
     "csv_country": "País",
     "csv_city": "Cidade",
     "csv_last_report": "Última Denúncia",
@@ -261,6 +271,7 @@ STRINGS = {
     "csv_vt_link": "Link VirusTotal",
     "csv_ibm_link": "Link IBM",
     "csv_alien_link": "Link AlienVault",
+    "csv_md_link": "Link MetaDefender",
     "csv_joe_link": "Link JoeSandbox",
     
     # Tabela de resultados
@@ -269,6 +280,7 @@ STRINGS = {
     "col_vt": "VirusTotal",
     "col_ibm": "X-Force",
     "col_alien": "AlienVault",
+    "col_md": "MetaDefender",
     "col_country": "País",
     "col_file": "Arquivo",
     "verdict_clean": "● Limpo",
@@ -277,6 +289,15 @@ STRINGS = {
     "verdict_bad": "✖ Malicioso",
     "verdict_unknown": "○ Indisponível",
     "verdict_incomplete": "▲ Análise incompleta",
+    "verdict_no_records": "○ Sem registros",
+    "no_records_one": (
+        "O indicador a seguir não foi encontrado em nenhuma das bases consultadas: {lista}\n"
+        "A ausência de registro não confirma que o indicador é legítimo."
+    ),
+    "no_records_many": (
+        "Os indicadores a seguir não foram encontrados em nenhuma das bases consultadas: {lista}\n"
+        "A ausência de registro não confirma que os indicadores são legítimos."
+    ),
 
     # Pool de navegadores do X-Force
     "drivers_degraded": (

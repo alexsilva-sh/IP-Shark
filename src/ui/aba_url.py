@@ -11,7 +11,9 @@ import requests
 import log
 from core import api
 from core.api import (
+    check_dominio_metadefender,
     check_ip_abuseipdb,
+    check_ip_metadefender,
     check_ip_virustotal,
     check_url_alienvault,
     check_url_virustotal,
@@ -86,6 +88,7 @@ class AbaURL:
         self.bad_urls = set()
         self.review_urls = set()
         self.incompletos_url = set()
+        self.sem_registro_url = set()
         self.cota_url = set()
         self.ignorados_url = []
         self.ip_results_by_domain = {}
@@ -138,6 +141,7 @@ class AbaURL:
             ("vt", "col_vt", 95, "center"),
             ("ibm", "col_ibm", 85, "center"),
             ("alien", "col_alien", 110, "center"),
+            ("md", "col_md", 120, "center"),
         ])
 
         self.url_copy_button = Botao(self.url_button_frame, text=t("btn_copy"),
@@ -167,6 +171,7 @@ class AbaURL:
         self.bad_urls = set()
         self.review_urls = set()
         self.incompletos_url = set()
+        self.sem_registro_url = set()
         self.cota_url = set()
         self.ip_results_by_domain = {}
         self.tabela_url.clear()
@@ -214,6 +219,8 @@ class AbaURL:
                     self.bad_urls.add(url)
                 elif status == "incompleto":
                     self.incompletos_url.add(url)
+                elif status == "sem_registros":
+                    self.sem_registro_url.add(url)
                 self.cota_url.update(fontes_em_cota(data["estados"]))
                 self._track_processing(self.currently_processing_urls, url, False,
                                        self.update_status_label_url)
@@ -242,10 +249,13 @@ class AbaURL:
             ibm_score, estado_ibm = self._consultar_ibm(check_url_ibm, url)
         if self.stop_flag:
             return None
-        alien_score, _alien_link, estado_alien = check_url_alienvault(url)
-        return build_url_result(url, result_vt.get("score"), ibm_score, alien_score,
+        alien, _alien_link, estado_alien = check_url_alienvault(url)
+        if self.stop_flag:
+            return None
+        md, estado_md = check_dominio_metadefender(url)
+        return build_url_result(url, result_vt.get("score"), ibm_score, alien,
                                 estado_vt=estado_vt, estado_ibm=estado_ibm,
-                                estado_alien=estado_alien)
+                                estado_alien=estado_alien, md=md, estado_md=estado_md)
 
     def _varrer_ips_do_dominio(self, indice, domain):
         ips = resolver_via_google_dns(domain) or resolver_via_socket(domain)
@@ -253,7 +263,7 @@ class AbaURL:
         self.ip_results_by_domain[domain] = []
         if not ips:
             self._ui(self._linha_url_filha, indice, 0,
-                     (t("domain_no_ip"), t("verdict_unknown"), "-", "-", "-", "-"),
+                     (t("domain_no_ip"), t("verdict_unknown"), "-", "-", "-", "-", "-"),
                      f"[{domain}] {t('domain_no_ip')}", "unknown")
             return
         for j, ip in enumerate(ips, 1):
@@ -268,6 +278,8 @@ class AbaURL:
                 self.review_urls.add(ip)
             if status in ("incompleto", "unknown"):
                 self.incompletos_url.add(ip)
+            if status == "sem_registros":
+                self.sem_registro_url.add(ip)
             if csv_data:
                 self.ip_results_by_domain[domain].append(csv_data)
 
@@ -275,6 +287,7 @@ class AbaURL:
         try:
             abuseipdb_result, estado_abuse = check_ip_abuseipdb(ip)
             virustotal_result, estado_vt = check_ip_virustotal(ip)
+            md, estado_md = check_ip_metadefender(ip)
             city, country = get_location(ip)
             assoc_domain = get_domain_from_abuseipdb(abuseipdb_result)
             ibm_score, estado_ibm = None, api.FONTE_OK
@@ -292,6 +305,8 @@ class AbaURL:
                 estado_abuse=estado_abuse,
                 estado_vt=estado_vt,
                 estado_ibm=estado_ibm,
+                md=md,
+                estado_md=estado_md,
             )
             return (relatorio_ip(data), data["status"],
                     linha_planilha_ip(data, self.ibm_url_ativo), colunas_ip(data, "-"),
@@ -299,7 +314,7 @@ class AbaURL:
         except Exception as e:
             _log.exception("falha ao consultar um IP associado ao dominio")
             erro = f"{t('error_checking_associated_ip')} {ip}: {e}"
-            return erro, "unknown", None, (ip, t("verdict_unknown"), "-", "-", "-", "-"), {}
+            return erro, "unknown", None, (ip, t("verdict_unknown"), "-", "-", "-", "-", "-"), {}
 
     def _linha_url(self, indice, colunas, texto, status):
         self.tabela_url.add(f"url-{indice}", colunas, texto, status)
@@ -318,6 +333,7 @@ class AbaURL:
 
     def _scan_stopped_url(self):
         self.url_button_action.config(state="normal")
+        self.guardar_no_historico("url")
         self._update_action_buttons()
 
     def _append_analysis_url(self):
@@ -335,7 +351,9 @@ class AbaURL:
                 blocos.append(plural(chave, self.bad_urls))
             if self.review_urls:
                 blocos.append(plural("ip_whitelist_review", self.review_urls))
-            if not self.bad_urls and not self.review_urls and not self.incompletos_url:
+            if self.sem_registro_url:
+                blocos.append(plural("no_records", self.sem_registro_url))
+            elif not (self.bad_urls or self.review_urls or self.incompletos_url):
                 blocos.append(plural("url_clean", self.results_url))
         self.tabela_url.set_preamble("\n\n".join(blocos), "\n\n".join(avisos))
 
@@ -366,16 +384,18 @@ class AbaURL:
         domain_headers = [
             t("csv_domain"), t("csv_verdict"), t("csv_vt_score"),
             *([t("csv_ibm_score")] if self.ibm_url_ativo else []),
-            t("csv_alien_score"), t("csv_vt_link"),
+            t("csv_alien_score"), t("csv_md_score"), t("csv_vt_link"),
             *([t("csv_ibm_link")] if self.ibm_url_ativo else []),
-            t("csv_alien_link"),
+            t("csv_alien_link"), t("csv_md_link"),
         ]
         ip_headers = [
             t("csv_ip"), t("csv_verdict"), t("csv_abuse_score"), t("csv_vt_score"),
             *([t("csv_ibm_score")] if self.ibm_url_ativo else []),
+            t("csv_md_score"),
             t("csv_domain"), t("csv_country"), t("csv_city"), t("csv_last_report"),
             t("csv_abuse_link"), t("csv_vt_link"),
             *([t("csv_ibm_link")] if self.ibm_url_ativo else []),
+            t("csv_md_link"),
         ]
         salvar_planilha_dominios(
             domain_results=self.results_url,

@@ -164,7 +164,7 @@ app.ibm_hash_ativo = True
 app.results_hash = []
 chamou_ibm = []
 aba_hash.check_hash_ibm = lambda d, h: chamou_ibm.append(h)
-aba_hash.check_hash_alienvault = lambda h: ("0", "link", core.FONTE_OK)
+aba_hash.check_hash_alienvault = lambda h: (core._otx_contexto({}), "link", core.FONTE_OK)
 aba_hash.check_hash_virustotal = lambda h: (None, core.FONTE_INDISPONIVEL)
 aba_hash.check_hash_joesandbox = lambda d, h: (False, "link")
 bloquear_rede(core)   # se algum mock vazar, a chamada real estoura aqui
