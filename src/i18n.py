@@ -27,11 +27,11 @@ def t(chave):
     return _IDIOMAS[_atual].get(chave, chave)
 
 
-def plural(chave, itens):
+def plural(chave, itens, separador=", "):
     """Escolhe a variante _one ou _many conforme a quantidade e preenche {lista}."""
     texto = t(f"{chave}_one" if len(itens) == 1 else f"{chave}_many")
     if "{lista}" in texto:
-        texto = texto.format(lista=", ".join(sorted(itens)))
+        texto = texto.format(lista=separador.join(sorted(itens)))
     return texto
 
 

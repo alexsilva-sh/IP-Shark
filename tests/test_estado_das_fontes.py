@@ -51,6 +51,7 @@ core.ABUSEIPDB_API_KEY = "k"
 core.VIRUSTOTAL_API_KEY = "k"
 core.ALIENVAULT_API_KEY = "k"
 core.reload_api_keys = lambda forcar=False: None
+core.PAUSA_RETENTATIVA = 0   # a pausa entre tentativas nao precisa ser vivida aqui
 
 print("\n[1] Classificacao das respostas HTTP")
 casos = [
@@ -73,7 +74,7 @@ print("\n[2] Toda consulta HTTP leva timeout")
 check(all("timeout" in kw for kw in chamadas), "todas as chamadas passaram timeout")
 check(all(kw["timeout"] == core.TIMEOUT_HTTP for kw in chamadas), "timeout e o padrao do modulo")
 
-print("\n[2b] Sessao reaproveitada e recuo configurado, sem retentar cota")
+print("\n[2b] Sessao reaproveitada, com uma unica politica de retentativa")
 sessao = _sessao_real()
 check(sessao is _sessao_real(), "a mesma thread reaproveita a Session (keep-alive)")
 de_outra_thread = []
@@ -83,11 +84,31 @@ aux.join()
 check(de_outra_thread[0] is not sessao,
       "cada thread tem a sua -- Session do requests nao e thread-safe")
 recuo = sessao.get_adapter("https://exemplo").max_retries
-check(recuo.total == 2 and recuo.backoff_factor > 0,
-      f"recuo exponencial configurado (total={recuo.total}, fator={recuo.backoff_factor})")
-check(429 not in recuo.status_forcelist,
-      "429 fora do forcelist: cota nao se resolve retentando, e o Retry-After congelaria a varredura")
-check(set(recuo.status_forcelist) >= {500, 502, 503, 504}, "erro transitorio de servidor retenta")
+check(recuo.total == 0,
+      f"urllib3 nao retenta: multiplicaria com o laco de _consultar (total={recuo.total})")
+
+print("\n[2b2] Fonte indisponivel e retentada; o resto sai na primeira resposta")
+for resposta, tentativas_esperadas, msg in (
+    (RespostaFake(500), core.TENTATIVAS_FONTE, "5xx retenta"),
+    (requests.exceptions.Timeout(), core.TENTATIVAS_FONTE, "timeout retenta"),
+    (RespostaFake(200, quebrado=True), core.TENTATIVAS_FONTE, "corpo ilegivel retenta"),
+    (RespostaFake(429), 1, "cota nao retenta -- nao melhora insistindo"),
+    (RespostaFake(401), 1, "chave recusada nao retenta"),
+    (RespostaFake(404), 1, "'sem registros' e resposta valida, nao retenta"),
+    (RespostaFake(200, {"a": 1}), 1, "acerto de primeira nao gasta tentativa extra"),
+):
+    mockar(resposta)
+    del chamadas[:]
+    core._consultar("https://exemplo")
+    check(len(chamadas) == tentativas_esperadas,
+          f"{msg} ({len(chamadas)} de {tentativas_esperadas} tentativas)")
+
+mockar(RespostaFake(500))
+del chamadas[:]
+core.definir_cancelamento(lambda: True)
+core._consultar("https://exemplo")
+check(len(chamadas) == 1, "varredura cancelada nao continua insistindo")
+core.definir_cancelamento(None)
 
 print("\n[2c] Retry-After do 429 e lido para o aviso de cota")
 mockar(RespostaFake(429, headers={"Retry-After": "1800"}))
@@ -347,15 +368,32 @@ check(t("ip_clean_one") in app.tabela_ip.report(), "sem pendencia, declara limpo
 app.incompletos_ip = {"1.1.1.1"}
 app._append_analysis()
 relatorio = app.tabela_ip.report()
+avisos = app.tabela_ip.warnings()
 check(t("ip_clean_one") not in relatorio, "com fonte faltando, NAO declara limpo")
-check("1.1.1.1" in relatorio and t("incomplete_review").split("{")[0].strip() in relatorio,
+check("1.1.1.1" in avisos and t("incomplete_review").split("{")[0].strip() in avisos,
       "avisa quais itens ficaram incompletos")
+check(t("incomplete_review").split("{")[0].strip() not in relatorio,
+      "o aviso fica na tela e fora do texto copiado -- o analista cola para o cliente")
+check(t("warnings_not_copied") in app.tabela_ip.detalhe.get("1.0", tk.END),
+      "a tela diz que aquele bloco nao vai no relatorio")
 
 app.cota_ip = {"VirusTotal"}
 app._append_analysis()
-relatorio = app.tabela_ip.report()
-check(t("quota_warning").split("{")[0].strip() in relatorio, "avisa que a cota estourou")
-check("VirusTotal" in relatorio, "diz qual API esgotou")
+avisos = app.tabela_ip.warnings()
+check(t("quota_warning").split("{")[0].strip() in avisos, "avisa que a cota estourou")
+check("VirusTotal" in avisos, "diz qual API esgotou")
+check(t("quota_warning").split("{")[0].strip() not in app.tabela_ip.report(),
+      "aviso de cota tambem nao entra no texto copiado")
+
+print("\n[10b] A lista de IPs para bloqueio vai sem espaco")
+app.incompletos_ip, app.cota_ip = set(), set()
+app.bad_ips = {"34.68.34.89", "78.153.140.177"}
+app.mss_var_ip.set(True)
+app._append_analysis()
+check("34.68.34.89,78.153.140.177" in app.tabela_ip.report(),
+      "IPs separados so por virgula: espaco quebra o bloqueio automatico")
+app.bad_ips = set()
+app.mss_var_ip.set(False)
 
 print("\n[11] Exportacao tambem nao mente")
 linha = apresentacao.linha_planilha_ip(abuse_fora, com_ibm=False)

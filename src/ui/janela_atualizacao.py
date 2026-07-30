@@ -7,6 +7,7 @@ from tkinter import scrolledtext, ttk
 from i18n import t
 from services.atualizacao import versao_mais_recente
 from ui import tema
+from ui.widgets import Botao
 
 RELEASES = "https://github.com/alexsilva-sh/IP-Shark/releases"
 
@@ -80,9 +81,9 @@ def mostrar_janela_atualizacao(versao, novidades):
 
     rodape = tk.Frame(janela, bg=tema.FUNDO)
     rodape.pack(fill="x", padx=16, pady=12)
-    ttk.Button(rodape, text=t("close"), style="Secondary.TButton",
+    Botao(rodape, text=t("close"),
                command=janela.destroy).pack(side="right")
-    ttk.Button(rodape, text=t("download_github"), style="Primary.TButton",
+    Botao(rodape, text=t("download_github"), tom="primario",
                command=lambda: webbrowser.open(RELEASES)).pack(side="right", padx=(0, 8))
     janela.bind("<Escape>", lambda e: janela.destroy())
 

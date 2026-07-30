@@ -22,7 +22,7 @@ from ui.apresentacao import (
     relatorio_hash,
 )
 from ui.navegadores import DriverIndisponivel
-from ui.widgets import Chip
+from ui.widgets import Botao, Chip
 
 
 class AbaHash:
@@ -40,8 +40,8 @@ class AbaHash:
         self.cota_hash = set()
         self.total_hash = self.feitos_hash = 0
 
-        self.hash_button = ttk.Button(self.tab_frame, text=t("tab_hash"),
-                                      command=self.show_hash_page, style="Nav.TButton")
+        self.hash_button = Botao(self.tab_frame, text=t("tab_hash"),
+                                 command=self.show_hash_page, tom="nav")
         self.hash_button.pack(fill="x", pady=(0, tema.E1))
         self._register_i18n(self.hash_button, "tab_hash")
         self.page_hash = tk.Frame(self.area_conteudo, bg=tema.FUNDO)
@@ -84,16 +84,16 @@ class AbaHash:
             ("alien", "col_alien", 110, "center"),
         ])
 
-        self.hash_copy_button = ttk.Button(self.hash_button_frame, text=t("btn_copy"),
-                                           command=self.copy_hash_output, style="Secondary.TButton")
+        self.hash_copy_button = Botao(self.hash_button_frame, text=t("btn_copy"),
+                                      command=self.copy_hash_output, tom="secundario")
         self.hash_copy_button.grid(row=0, column=1, padx=tema.E2)
         self._register_i18n(self.hash_copy_button, "btn_copy")
-        self.hash_save_button = ttk.Button(self.hash_button_frame, text=t("btn_export"),
-                                           command=self.save_hash_results, style="Secondary.TButton")
+        self.hash_save_button = Botao(self.hash_button_frame, text=t("btn_export"),
+                                      command=self.save_hash_results, tom="secundario")
         self.hash_save_button.grid(row=0, column=2, padx=tema.E2)
         self._register_i18n(self.hash_save_button, "btn_export")
-        self.hash_cancel_button = ttk.Button(self.hash_button_frame, text=t("btn_cancel"),
-                                             command=self.cancel_check_hash, style="Danger.TButton")
+        self.hash_cancel_button = Botao(self.hash_button_frame, text=t("btn_cancel"),
+                                        command=self.cancel_check_hash, tom="perigo")
         self.hash_cancel_button.grid(row=0, column=3, padx=tema.E2)
         self._register_i18n(self.hash_cancel_button, "btn_cancel")
 
@@ -199,21 +199,21 @@ class AbaHash:
         self._update_action_buttons()
 
     def _append_analysis_hash(self):
-        blocos = []
+        avisos, blocos = [], []
         if self.cota_hash:
-            blocos.append(aviso_de_cota(self.cota_hash))
+            avisos.append(aviso_de_cota(self.cota_hash))
+        if self.incompletos_hash:
+            avisos.append(t("incomplete_review").format(
+                lista=", ".join(sorted(self.incompletos_hash))))
         if self.ignorados_hash:
             blocos.append(f"{t('skipped_items')}: {', '.join(self.ignorados_hash)}")
-        if self.incompletos_hash:
-            blocos.append(t("incomplete_review").format(
-                lista=", ".join(sorted(self.incompletos_hash))))
         if self.pre_var_hash.get():
             if self.bad_hashes:
                 chave = "hash_bad_mss" if self.mss_var_hash.get() else "hash_bad_no_mss"
                 blocos.append(plural(chave, self.bad_hashes))
             elif not self.incompletos_hash:
                 blocos.append(plural("hash_clean", self.results_hash))
-        self.tabela_hash.set_preamble("\n\n".join(blocos))
+        self.tabela_hash.set_preamble("\n\n".join(blocos), "\n\n".join(avisos))
 
     def update_status_label_hash(self):
         if not self.scanning_hash:

@@ -12,6 +12,7 @@ from core.api import carregar_chaves_salvas, reload_api_keys, salvar_chaves
 from i18n import t
 from services import cofre
 from ui import tema
+from ui.widgets import Botao
 
 _log = log.obter("config")
 
@@ -36,7 +37,7 @@ class ConfigAPIDialog(tk.Toplevel):
         self.campos = {}
         self.revelado = {}
 
-        corpo = tk.Frame(self, bg=tema.FUNDO, padx=22, pady=18)
+        corpo = tk.Frame(self, bg=tema.FUNDO, padx=tema.E5, pady=tema.E4)
         corpo.pack(fill="both", expand=True)
 
         ttk.Label(corpo, text=t("cfg_title"), style="Title.TLabel").pack(anchor="w")
@@ -45,19 +46,19 @@ class ConfigAPIDialog(tk.Toplevel):
         aviso = t("cfg_intro") if cifrado else t("cfg_intro_sem_cripto")
         tk.Label(corpo, text=f"🔒 {aviso}", bg=tema.FUNDO,
                  fg=tema.TEXTO_SECUNDARIO if cifrado else tema.REVISAR,
-                 font=("Segoe UI", 9), wraplength=520, justify="left").pack(anchor="w", pady=(6, 14))
+                 font=tema.fonte("corpo"), wraplength=520, justify="left").pack(anchor="w", pady=(6, 14))
 
         grade = tk.Frame(corpo, bg=tema.FUNDO)
         grade.pack(fill="x")
         for linha, (nome, rotulo, url) in enumerate(cofre.CHAVES):
-            tk.Label(grade, text=rotulo, bg=tema.FUNDO, fg="white",
-                     font=("Segoe UI", 10, "bold")).grid(row=linha * 2, column=0, sticky="w", pady=(8, 0))
+            tk.Label(grade, text=rotulo, bg=tema.FUNDO, fg=tema.TEXTO,
+                     font=tema.fonte("forte")).grid(row=linha * 2, column=0, sticky="w", pady=(8, 0))
 
-            estado = tk.Label(grade, bg=tema.FUNDO, font=("Segoe UI", 8))
+            estado = tk.Label(grade, bg=tema.FUNDO, font=tema.fonte("menor"))
             estado.grid(row=linha * 2, column=1, sticky="w", padx=(10, 0), pady=(8, 0))
 
             link = tk.Label(grade, text=t("cfg_get_key"), bg=tema.FUNDO, fg=tema.LINK,
-                            font=("Segoe UI", 8, "underline"), cursor="hand2")
+                            font=tema.fonte("link"), cursor="hand2")
             link.grid(row=linha * 2, column=2, sticky="e", pady=(8, 0))
             link.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
 
@@ -65,7 +66,7 @@ class ConfigAPIDialog(tk.Toplevel):
             campo.grid(row=linha * 2 + 1, column=0, columnspan=2, sticky="we", pady=(2, 0))
             campo.insert(0, salvas.get(nome, ""))
 
-            botao = ttk.Button(grade, text=t("cfg_show"), style="Secondary.TButton", width=9)
+            botao = Botao(grade, text=t("cfg_show"))
             botao.grid(row=linha * 2 + 1, column=2, sticky="e", padx=(8, 0), pady=(2, 0))
             botao.config(command=lambda n=nome: self._alternar_visibilidade(n))
 
@@ -80,27 +81,27 @@ class ConfigAPIDialog(tk.Toplevel):
             quadro = tk.Frame(corpo, bg=tema.FUNDO_CAMPO, padx=12, pady=10)
             quadro.pack(fill="x", pady=(16, 0))
             tk.Label(quadro, text=f"⚠ {t('cfg_legacy_found')}", bg=tema.FUNDO_CAMPO, fg=tema.REVISAR,
-                     font=("Segoe UI", 9), wraplength=500, justify="left").pack(anchor="w")
+                     font=tema.fonte("corpo"), wraplength=500, justify="left").pack(anchor="w")
             tk.Label(quadro, text=self.legado, bg=tema.FUNDO_CAMPO, fg=tema.TEXTO_SECUNDARIO,
-                     font=("Consolas", 8), wraplength=500, justify="left").pack(anchor="w", pady=(4, 6))
-            ttk.Button(quadro, text=t("cfg_legacy_delete"), style="Danger.TButton",
-                       command=self._remover_legado).pack(anchor="w")
+                     font=tema.fonte("mono"), wraplength=500, justify="left").pack(anchor="w", pady=(4, 6))
+            Botao(quadro, text=t("cfg_legacy_delete"), tom="perigo",
+                  command=self._remover_legado).pack(anchor="w")
             self.quadro_legado = quadro
 
         tk.Label(corpo, text=t("cfg_test_cost"), bg=tema.FUNDO, fg=tema.TEXTO_SECUNDARIO,
-                 font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(14, 0))
+                 font=tema.fonte("menor"), justify="left").pack(anchor="w", pady=(14, 0))
 
         rodape = tk.Frame(corpo, bg=tema.FUNDO)
         rodape.pack(fill="x", pady=(6, 0))
-        ttk.Button(rodape, text=t("cfg_erase"), style="Danger.TButton",
-                   command=self._apagar_tudo).pack(side="left")
-        self.botao_testar = ttk.Button(rodape, text=t("cfg_test"), style="Secondary.TButton",
-                                       command=self._testar)
+        Botao(rodape, text=t("cfg_erase"), tom="perigo",
+              command=self._apagar_tudo).pack(side="left")
+        self.botao_testar = Botao(rodape, text=t("cfg_test"),
+                                  command=self._testar)
         self.botao_testar.pack(side="left", padx=(8, 0))
-        ttk.Button(rodape, text=t("cfg_save"), style="Primary.TButton",
-                   command=self._salvar).pack(side="right")
-        ttk.Button(rodape, text=t("cfg_cancel"), style="Secondary.TButton",
-                   command=self.destroy).pack(side="right", padx=(0, 8))
+        Botao(rodape, text=t("cfg_save"), tom="primario",
+              command=self._salvar).pack(side="right")
+        Botao(rodape, text=t("cfg_cancel"),
+              command=self.destroy).pack(side="right", padx=(0, 8))
 
         self.bind("<Escape>", lambda e: self.destroy())
         self.bind("<Return>", lambda e: self._salvar())
@@ -124,9 +125,9 @@ class ConfigAPIDialog(tk.Toplevel):
     def _atualizar_estado(self, nome):
         _, estado = self.revelado[nome]
         if self.campos[nome].get().strip():
-            estado.config(text=f"● {t('cfg_configured')}", fg="#00c853")
+            estado.config(text=f"● {t('cfg_configured')}", fg=tema.LIMPO)
         else:
-            estado.config(text=f"○ {t('cfg_not_configured')}", fg="#777777")
+            estado.config(text=f"○ {t('cfg_not_configured')}", fg=tema.TEXTO_SECUNDARIO)
 
     def _alternar_visibilidade(self, nome):
         campo = self.campos[nome]

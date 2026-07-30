@@ -24,7 +24,7 @@ from ui.apresentacao import (
     linha_planilha_ip,
     relatorio_ip,
 )
-from ui.widgets import Chip
+from ui.widgets import Botao, Chip
 
 _log = log.obter("aba_ip")
 
@@ -45,8 +45,8 @@ class AbaIP:
         self.cota_ip = set()
         self.total_ip = self.feitos_ip = 0
 
-        self.ip_button = ttk.Button(self.tab_frame, text=t("tab_ip"),
-                                    command=self.show_ip_page, style="NavActive.TButton")
+        self.ip_button = Botao(self.tab_frame, text=t("tab_ip"),
+                               command=self.show_ip_page, tom="nav_ativo")
         self.ip_button.pack(fill="x", pady=(0, tema.E1))
         self._register_i18n(self.ip_button, "tab_ip")
         self.page_ip = tk.Frame(self.area_conteudo, bg=tema.FUNDO)
@@ -89,16 +89,16 @@ class AbaIP:
             ("pais", "col_country", 170, "w"),
         ])
 
-        self.copy_button = ttk.Button(self.button_frame, text=t("btn_copy"),
-                                      command=self.copy_output, style="Secondary.TButton")
+        self.copy_button = Botao(self.button_frame, text=t("btn_copy"),
+                                 command=self.copy_output, tom="secundario")
         self.copy_button.grid(row=0, column=1, padx=tema.E2)
         self._register_i18n(self.copy_button, "btn_copy")
-        self.save_button = ttk.Button(self.button_frame, text=t("btn_export"),
-                                      command=self.save_results, style="Secondary.TButton")
+        self.save_button = Botao(self.button_frame, text=t("btn_export"),
+                                 command=self.save_results, tom="secundario")
         self.save_button.grid(row=0, column=2, padx=tema.E2)
         self._register_i18n(self.save_button, "btn_export")
-        self.cancel_button = ttk.Button(self.button_frame, text=t("btn_cancel"),
-                                        command=self.cancel_check, style="Danger.TButton")
+        self.cancel_button = Botao(self.button_frame, text=t("btn_cancel"),
+                                   command=self.cancel_check, tom="perigo")
         self.cancel_button.grid(row=0, column=3, padx=tema.E2)
         self._register_i18n(self.cancel_button, "btn_cancel")
 
@@ -256,25 +256,24 @@ class AbaIP:
         self._update_action_buttons()
 
     def _append_analysis(self):
-        blocos = []
+        avisos, blocos = [], []
         if self.cota_ip:
-            blocos.append(aviso_de_cota(self.cota_ip))
+            avisos.append(aviso_de_cota(self.cota_ip))
+        if self.incompletos_ip:
+            avisos.append(t("incomplete_review").format(lista=", ".join(sorted(self.incompletos_ip))))
         if self.ignorados_ip:
             blocos.append(f"{t('skipped_items')}: {', '.join(self.ignorados_ip)}")
-        if self.incompletos_ip:
-            blocos.append(t("incomplete_review").format(lista=", ".join(sorted(self.incompletos_ip))))
-        if not self.pre_var_ip.get():
-            self.tabela_ip.set_preamble("\n\n".join(blocos))
-            return
-        if self.bad_ips:
-            chave = "ip_bad_mss" if self.mss_var_ip.get() else "ip_bad_no_mss"
-            blocos.append(plural(chave, self.bad_ips))
-        if self.review_ips:
-            blocos.append(plural("ip_whitelist_review", self.review_ips))
-        # "Nada malicioso encontrado" so vale se todas as fontes responderam.
-        if not self.bad_ips and not self.review_ips and not self.incompletos_ip:
-            blocos.append(plural("ip_clean", self.results_ip))
-        self.tabela_ip.set_preamble("\n\n".join(blocos))
+        if self.pre_var_ip.get():
+            if self.bad_ips:
+                chave = "ip_bad_mss" if self.mss_var_ip.get() else "ip_bad_no_mss"
+                # Sem espaco entre os IPs: essa linha vai copiada para o bloqueio.
+                blocos.append(plural(chave, self.bad_ips, separador=","))
+            if self.review_ips:
+                blocos.append(plural("ip_whitelist_review", self.review_ips))
+            # "Nada malicioso encontrado" so vale se todas as fontes responderam.
+            if not self.bad_ips and not self.review_ips and not self.incompletos_ip:
+                blocos.append(plural("ip_clean", self.results_ip))
+        self.tabela_ip.set_preamble("\n\n".join(blocos), "\n\n".join(avisos))
 
     def update_status_label(self):
         if not self.scanning_ip:

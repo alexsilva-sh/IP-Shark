@@ -302,6 +302,7 @@ STRINGS = {
         "The absence of a detection here does not mean the indicator is clean. "
         "Re-run the query before clearing it."
     ),
+    "warnings_not_copied": "⚠ ANALYST NOTICES — not included in the copied text:",
     "detail_hint": "Select a row to see details and links.",
     "count_valid": "valid",
     "count_invalid": "invalid",

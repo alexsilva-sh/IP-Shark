@@ -4,6 +4,7 @@ from datetime import datetime
 from tkinter import ttk
 
 import log
+import preferencias
 from core import api
 from core.reputacao import classificar_ibm
 from i18n import t
@@ -12,7 +13,7 @@ from ui.aba_hash import AbaHash
 from ui.aba_ip import AbaIP
 from ui.aba_url import AbaURL
 from ui.navegadores import DriverIndisponivel, DriverPool
-from ui.widgets import Cartao, MultilineInput, ResultTable, RotuloSecao
+from ui.widgets import Botao, Cartao, MultilineInput, ResultTable, RotuloSecao
 
 VERSAO = "v3.1"
 
@@ -27,6 +28,7 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         self.i18n_widgets = []
         self.current_page = "ip"
         self.stop_flag = False
+        api.definir_cancelamento(lambda: self.stop_flag)
         root.title(f"IP Shark {VERSAO} - by @alexsilva.sh in Github")
         root.configure(bg=tema.FUNDO)
 
@@ -110,13 +112,12 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
 
         aparencia = tk.Frame(rodape, bg=tema.FUNDO_PAINEL)
         aparencia.pack(fill="x", pady=(0, tema.E2))
-        self.botao_tema = ttk.Button(aparencia, width=3, style="Secondary.TButton",
-                                     command=self._alternar_tema)
+        self.botao_tema = Botao(aparencia, command=self._alternar_tema)
         self.botao_tema.pack(side="left")
-        ttk.Button(aparencia, text="A-", width=3, style="Secondary.TButton",
-                   command=lambda: self._ajustar_fonte(-1)).pack(side="left", padx=(tema.E1, 0))
-        ttk.Button(aparencia, text="A+", width=3, style="Secondary.TButton",
-                   command=lambda: self._ajustar_fonte(1)).pack(side="left", padx=(tema.E1, 0))
+        Botao(aparencia, text="A-", command=lambda: self._ajustar_fonte(-1)).pack(
+            side="left", padx=(tema.E1, 0))
+        Botao(aparencia, text="A+", command=lambda: self._ajustar_fonte(1)).pack(
+            side="left", padx=(tema.E1, 0))
         self._atualizar_botao_tema()
 
         # Slot que o ponto de entrada preenche com idioma e configuracao.
@@ -137,13 +138,15 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         tema.alternar(self.root)
         self._atualizar_botao_tema()
         self._desenhar_historico()
+        preferencias.salvar(tema=tema.nome_atual())
 
     def _atualizar_botao_tema(self):
         claro = tema.nome_atual() == "claro"
         self.botao_tema.config(text="☾" if claro else "☀")
 
     def _ajustar_fonte(self, passo):
-        tema.definir_escala(tema.escala_atual() + passo)
+        # Salva a escala aplicada, nao a pedida: nos extremos ela nao muda.
+        preferencias.salvar(escala=tema.definir_escala(tema.escala_atual() + passo))
         self._desenhar_historico()
 
     def registrar_historico(self, aba, texto, quantidade):
@@ -202,10 +205,10 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         for chave, (pagina, botao) in paginas.items():
             if chave == nome:
                 pagina.pack(fill=tk.BOTH, expand=True)
-                botao.config(style="NavActive.TButton")
+                botao.config(tom="nav_ativo")
             else:
                 pagina.pack_forget()
-                botao.config(style="Nav.TButton")
+                botao.config(tom="nav")
         self.current_page = nome
         self.titulo_pagina.config(text=t({"ip": "tab_ip", "hash": "tab_hash",
                                           "url": "tab_domain"}[nome]))
@@ -228,13 +231,20 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         self.banner.pack(fill="x", padx=tema.E4, pady=(tema.E2, 0), after=self.barra_topo)
 
     def _consultar_ibm(self, consulta, indicador):
-        """(score, estado) do X-Force. Pool vazio vira fonte indisponivel em vez de travar."""
-        try:
-            with self.driver_pool.emprestar() as driver:
-                score = consulta(driver, indicador)
-        except DriverIndisponivel:
-            return None, api.FONTE_INDISPONIVEL
-        estado = classificar_ibm(score)
+        """(score, estado) do X-Force. Pool vazio vira fonte indisponivel em vez de travar.
+
+        Pagina ilegivel e retentada como nas fontes HTTP; falta de navegador nao, que o
+        emprestimo ja espera a sua vez por conta propria.
+        """
+        for _ in api.tentativas():
+            try:
+                with self.driver_pool.emprestar() as driver:
+                    score = consulta(driver, indicador)
+            except DriverIndisponivel:
+                return None, api.FONTE_INDISPONIVEL
+            estado = classificar_ibm(score)
+            if estado != api.FONTE_INDISPONIVEL or self.stop_flag:
+                break
         return (t("unknown") if estado == api.FONTE_SEM_DADOS else score), estado
 
     # ---------- interface ----------
@@ -281,8 +291,7 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         """
         cartao = Cartao(pagina)
         cartao.pack(fill="x", padx=tema.E4, pady=(0, tema.E2))
-        botao = ttk.Button(cartao.corpo, text=t(chave_botao), command=comando,
-                           style="Primary.TButton")
+        botao = Botao(cartao.corpo, text=t(chave_botao), command=comando, tom="primario")
         botao.pack(side="right", padx=(tema.E4, 0))
         self._register_i18n(botao, chave_botao)
         linhas = []

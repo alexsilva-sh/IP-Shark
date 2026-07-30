@@ -306,6 +306,7 @@ STRINGS = {
         "A ausência de detecção aqui não significa que o indicador é limpo. "
         "Repita a consulta antes de liberar."
     ),
+    "warnings_not_copied": "⚠ AVISOS PARA O ANALISTA — não entram no texto copiado:",
     "detail_hint": "Selecione uma linha para ver os detalhes e os links.",
     "count_valid": "válidos",
     "count_invalid": "inválidos",

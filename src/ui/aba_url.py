@@ -40,7 +40,7 @@ from ui.apresentacao import (
     relatorio_ip,
     relatorio_url,
 )
-from ui.widgets import Chip
+from ui.widgets import Botao, Chip
 
 _log = log.obter("aba_url")
 
@@ -91,8 +91,8 @@ class AbaURL:
         self.ip_results_by_domain = {}
         self.total_url = self.feitos_url = 0
 
-        self.url_button = ttk.Button(self.tab_frame, text=t("tab_domain"),
-                                     command=self.show_url_page, style="Nav.TButton")
+        self.url_button = Botao(self.tab_frame, text=t("tab_domain"),
+                                command=self.show_url_page, tom="nav")
         self.url_button.pack(fill="x", pady=(0, tema.E1))
         self._register_i18n(self.url_button, "tab_domain")
         self.page_url = tk.Frame(self.area_conteudo, bg=tema.FUNDO)
@@ -140,16 +140,16 @@ class AbaURL:
             ("alien", "col_alien", 110, "center"),
         ])
 
-        self.url_copy_button = ttk.Button(self.url_button_frame, text=t("btn_copy"),
-                                          command=self.copy_url_output, style="Secondary.TButton")
+        self.url_copy_button = Botao(self.url_button_frame, text=t("btn_copy"),
+                                     command=self.copy_url_output, tom="secundario")
         self.url_copy_button.grid(row=0, column=1, padx=tema.E2)
         self._register_i18n(self.url_copy_button, "btn_copy")
-        self.url_save_button = ttk.Button(self.url_button_frame, text=t("btn_export"),
-                                          command=self.save_url_results, style="Secondary.TButton")
+        self.url_save_button = Botao(self.url_button_frame, text=t("btn_export"),
+                                     command=self.save_url_results, tom="secundario")
         self.url_save_button.grid(row=0, column=2, padx=tema.E2)
         self._register_i18n(self.url_save_button, "btn_export")
-        self.url_cancel_button = ttk.Button(self.url_button_frame, text=t("btn_cancel"),
-                                            command=self.cancel_check_url, style="Danger.TButton")
+        self.url_cancel_button = Botao(self.url_button_frame, text=t("btn_cancel"),
+                                       command=self.cancel_check_url, tom="perigo")
         self.url_cancel_button.grid(row=0, column=3, padx=tema.E2)
         self._register_i18n(self.url_cancel_button, "btn_cancel")
 
@@ -321,25 +321,23 @@ class AbaURL:
         self._update_action_buttons()
 
     def _append_analysis_url(self):
-        blocos = []
+        avisos, blocos = [], []
         if self.cota_url:
-            blocos.append(aviso_de_cota(self.cota_url))
+            avisos.append(aviso_de_cota(self.cota_url))
+        if self.incompletos_url:
+            avisos.append(t("incomplete_review").format(
+                lista=", ".join(sorted(self.incompletos_url))))
         if self.ignorados_url:
             blocos.append(f"{t('skipped_items')}: {', '.join(self.ignorados_url)}")
-        if self.incompletos_url:
-            blocos.append(t("incomplete_review").format(
-                lista=", ".join(sorted(self.incompletos_url))))
-        if not self.pre_var_url.get():
-            self.tabela_url.set_preamble("\n\n".join(blocos))
-            return
-        if self.bad_urls:
-            chave = "url_bad_mss" if self.mss_var_url.get() else "url_bad_no_mss"
-            blocos.append(plural(chave, self.bad_urls))
-        if self.review_urls:
-            blocos.append(plural("ip_whitelist_review", self.review_urls))
-        if not self.bad_urls and not self.review_urls and not self.incompletos_url:
-            blocos.append(plural("url_clean", self.results_url))
-        self.tabela_url.set_preamble("\n\n".join(blocos))
+        if self.pre_var_url.get():
+            if self.bad_urls:
+                chave = "url_bad_mss" if self.mss_var_url.get() else "url_bad_no_mss"
+                blocos.append(plural(chave, self.bad_urls))
+            if self.review_urls:
+                blocos.append(plural("ip_whitelist_review", self.review_urls))
+            if not self.bad_urls and not self.review_urls and not self.incompletos_url:
+                blocos.append(plural("url_clean", self.results_url))
+        self.tabela_url.set_preamble("\n\n".join(blocos), "\n\n".join(avisos))
 
     def update_status_label_url(self):
         if not self.scanning_url:

@@ -85,6 +85,13 @@ def nome_atual():
     return _atual
 
 
+def definir_tema_inicial(nome):
+    """Escolhe a paleta antes de existir widget na tela, sem repintar nada."""
+    if nome in PALETAS:
+        _publicar(nome)
+    return _atual
+
+
 # ---------- tipografia ----------
 
 BASE = 10

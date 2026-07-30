@@ -100,5 +100,39 @@ check(IP_SIGILOSO not in novo, "o IP consultado NAO foi para o arquivo")
 check(HASH_SIGILOSO not in novo, "o hash consultado NAO foi para o arquivo")
 check("X-Force" in novo and "JoeSandbox" in novo, "mas o registro diz qual fonte falhou")
 
+print("\n[6] Preferencias de tela sobrevivem ao fechamento do app")
+import json  # noqa: E402
+
+import preferencias  # noqa: E402
+
+check(preferencias.pasta_dados().startswith(saida), "preferencias ficam na pasta do app")
+check(preferencias.carregar() == preferencias.PADRAO,
+      "sem arquivo, vale o padrao embutido")
+check(preferencias.salvar(escala=3, tema="claro"), "gravou")
+salvas = preferencias.carregar()
+check(salvas["escala"] == 3 and salvas["tema"] == "claro", "leu de volta o que foi gravado")
+check(salvas["idioma"] == preferencias.PADRAO["idioma"],
+      "salvar uma chave nao apaga as outras")
+preferencias.salvar(idioma="en")
+check(preferencias.carregar()["escala"] == 3, "a escala sobreviveu ao salvar o idioma")
+
+with open(preferencias.caminho(), "w", encoding="utf-8") as f:
+    f.write("{isto nao e json")
+check(preferencias.carregar() == preferencias.PADRAO,
+      "arquivo corrompido cai no padrao em vez de impedir o app de abrir")
+with open(preferencias.caminho(), "w", encoding="utf-8") as f:
+    json.dump({"escala": "grande", "tema": 7, "lixo": 1}, f)
+check(preferencias.carregar() == preferencias.PADRAO,
+      "tipo errado e chave desconhecida sao ignorados")
+
+# Se a pasta nao puder ser criada, o app segue funcionando -- so nao lembra a escolha.
+# Um arquivo ocupando o caminho reproduz isso sem depender de permissao do sistema.
+obstruido = os.path.join(saida, "obstruido")
+with open(obstruido, "w", encoding="utf-8") as f:
+    f.write("sou um arquivo, nao uma pasta")
+preferencias.pasta_dados = lambda: os.path.join(obstruido, "IPShark")
+check(preferencias.salvar(escala=1) is False, "falha ao gravar e reportada, nao levantada")
+check(preferencias.carregar() == preferencias.PADRAO, "e a leitura tambem nao estoura")
+
 shutil.rmtree(saida, ignore_errors=True)
 encerrar()

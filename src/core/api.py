@@ -3,10 +3,10 @@ import base64
 import os
 import sys
 import threading
+import time
 
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from core.paises import traduzir_pais
 from services import cofre
@@ -30,12 +30,32 @@ FONTE_INDISPONIVEL = "indisponivel"  # rede, timeout, 5xx, resposta ilegivel
 
 ESTADOS_SEM_RESPOSTA = (FONTE_SEM_CHAVE, FONTE_COTA, FONTE_INDISPONIVEL)
 
-# 429 fica FORA do status_forcelist de proposito. Cota estourada nao melhora com
-# retentativa, e o urllib3 respeita o Retry-After dormindo o que a API mandar -- uma cota
-# diaria devolve horas, que congelariam a varredura inteira dentro de uma requisicao.
-# Aqui o 429 continua virando FONTE_COTA na hora, e o Retry-After so e lido para avisar.
-RECUO = Retry(total=2, backoff_factor=0.5, status_forcelist=(500, 502, 503, 504),
-              allowed_methods=("GET",), raise_on_status=False)
+# Retentativa por fonte e por indicador. So para indisponibilidade: cota, chave recusada
+# e "sem registros" nao melhoram insistindo, e o Retry-After de cota diaria vem em horas.
+TENTATIVAS_FONTE = 3
+PAUSA_RETENTATIVA = 0.8   # segundos; cresce a cada tentativa
+
+
+def _sem_cancelamento():
+    return False
+
+
+_cancelado = _sem_cancelamento
+
+
+def definir_cancelamento(callback):
+    """Registra como saber que a varredura foi cancelada -- ninguem insiste depois disso."""
+    global _cancelado
+    _cancelado = callback or _sem_cancelamento
+
+
+def tentativas():
+    """Rende o numero de cada tentativa, pausando so entre uma e a proxima."""
+    for numero in range(1, TENTATIVAS_FONTE + 1):
+        if numero > 1:
+            time.sleep(PAUSA_RETENTATIVA * (numero - 1))
+        yield numero
+
 
 # Uma Session por thread, nao uma compartilhada: a Session do requests nao e thread-safe
 # (o cookie jar e estado mutavel comum) e a varredura de IP roda com ate 10 workers. Por
@@ -48,7 +68,8 @@ def _sessao():
     sessao = getattr(_sessoes, "atual", None)
     if sessao is None:
         sessao = requests.Session()
-        adaptador = HTTPAdapter(max_retries=RECUO)
+        # Sem retentativa do urllib3: multiplicaria com a de `_consultar`.
+        adaptador = HTTPAdapter(max_retries=0)
         sessao.mount("https://", adaptador)
         sessao.mount("http://", adaptador)
         _sessoes.atual = sessao
@@ -161,8 +182,19 @@ def safe_get(d, *keys, default=None):
 
 
 def _consultar(url, fonte=None, **kwargs):
-    """GET com timeout que classifica a resposta. Devolve (json, estado)."""
+    """GET com timeout que classifica a resposta. Devolve (json, estado).
+
+    Indisponibilidade e retentada ate TENTATIVAS_FONTE vezes; o resto sai na primeira.
+    """
     kwargs.setdefault("timeout", TIMEOUT_HTTP)
+    for _ in tentativas():
+        dados, estado = _uma_tentativa(url, fonte, **kwargs)
+        if estado != FONTE_INDISPONIVEL or _cancelado():
+            break
+    return dados, estado
+
+
+def _uma_tentativa(url, fonte, **kwargs):
     try:
         resposta = _sessao().get(url, **kwargs)
     except requests.exceptions.RequestException:

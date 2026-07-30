@@ -96,6 +96,37 @@ app.pre_var_ip.set(True)
 app._append_analysis()
 check("2.2.2.2" in app.tabela_ip.report().split("\n\n")[1], "pre-analise entra no topo do relatorio")
 
+print("\n[7b] Selecionar um IOC nao e caminho sem volta")
+app.tabela_ip.set_preamble("resumo do relatorio", "aviso que nao se copia")
+check(not app.tabela_ip.tree.selection(),
+      "o resumo desmarca a linha -- senao clicar nela de novo nao dispararia evento")
+app.tabela_ip.tree.selection_set("ip-2")
+root.update()
+check("2.2.2.2" in app.tabela_ip.detalhe.get("1.0", tk.END), "o detalhe do IOC tomou o painel")
+
+# Janela withdrawn nao tem geometria: a regiao do clique e ditada aqui.
+regiao = {"onde": "nothing"}
+app.tabela_ip.tree.identify_region = lambda x, y: regiao["onde"]
+clique = tk.Event()
+clique.x, clique.y = 10, 10
+
+app.tabela_ip._ao_clicar(clique)
+painel = app.tabela_ip.detalhe.get("1.0", tk.END)
+check("aviso que nao se copia" in painel and "resumo do relatorio" in painel,
+      "clicar na area vazia devolve aviso e resumo")
+check(not app.tabela_ip.tree.selection(), "e a linha volta a ficar sem selecao")
+
+for onde in ("heading", "cell", "tree"):
+    regiao["onde"] = onde
+    app.tabela_ip.tree.selection_set("ip-2")
+    root.update()
+    app.tabela_ip._ao_clicar(clique)
+    check(app.tabela_ip.tree.selection() == ("ip-2",),
+          f"clique em '{onde}' preserva a selecao -- so a area vazia desfaz")
+for tabela in (app.tabela_ip, app.tabela_hash, app.tabela_url):
+    check(tabela.tree.bind("<Button-1>") != "",
+          "IP, hash e dominio compartilham o mesmo caminho de volta")
+
 print("\n[8] Barra de progresso determinada")
 app.scanning_ip = True
 app.feitos_ip = 0
@@ -337,6 +368,32 @@ ultima = app.tabela_ip.colunas[-1][0]
 check(app.tabela_ip.tree.column(ultima, "stretch"),
       "a ultima coluna estica para absorver a sobra de largura")
 check(t("btn_copy") == "Copiar resultados", "o botao de copiar diz o que copia")
+
+print("\n[25] A aparencia escolhida fica salva para a proxima abertura")
+import preferencias
+
+preferencias.salvar(escala=0, tema="escuro")
+app._ajustar_fonte(2)
+check(preferencias.carregar()["escala"] == 2, "A+ grava a escala escolhida")
+app._alternar_tema()
+check(preferencias.carregar()["tema"] == tema.nome_atual(),
+      f"o tema escolhido fica gravado ({tema.nome_atual()})")
+app._alternar_tema()
+app._ajustar_fonte(99)
+check(preferencias.carregar()["escala"] == tema.ESCALA_MAX,
+      "grava a escala aplicada, nao a pedida -- no teto elas diferem")
+app._ajustar_fonte(-99)
+check(preferencias.carregar()["escala"] == tema.ESCALA_MIN, "e no piso tambem")
+
+# O caminho do boot: o que foi salvo entra antes de existir widget, sem repintar.
+preferencias.salvar(tema="claro", escala=1, idioma="en")
+salvas = preferencias.carregar()
+check(tema.definir_tema_inicial(salvas["tema"]) == "claro", "boot assume a paleta salva")
+check(tema.definir_escala(salvas["escala"]) == 1, "boot assume a escala salva")
+check(salvas["idioma"] == "en", "boot assume o idioma salvo")
+tema.definir_tema_inicial("escuro")
+tema.definir_escala(0)
+preferencias.salvar(**preferencias.PADRAO)
 
 root.destroy()
 encerrar()
