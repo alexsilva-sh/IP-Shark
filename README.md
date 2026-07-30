@@ -128,4 +128,4 @@ navegadores roda com dublês. Rode-os antes de gerar um executável para distrib
 
 **Demonstração**
 
-![Demonstração de uso](assets/imagem (34).png)
+![Demonstração de uso](assets/imagem.png)
