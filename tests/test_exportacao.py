@@ -42,13 +42,18 @@ print("\n[1] O veredito chega na planilha de IP")
 headers = [t("csv_ip"), t("csv_verdict"), t("csv_abuse_score"), t("csv_vt_score"),
            t("csv_md_score"),
            t("csv_domain"), t("csv_country"), t("csv_city"), t("csv_last_report"),
-           t("csv_abuse_link"), t("csv_vt_link"), t("csv_md_link")]
+           t("csv_abuse_link"), t("csv_vt_link"), t("csv_md_link"), t("csv_ibm_link")]
 linhas = [apresentacao.linha_planilha_ip(d, TODAS["ip"])
           for d in (limpo, malicioso, revisar, incompleto)]
 check(all(len(linha) == len(headers) for linha in linhas),
       f"cada linha bate com o cabecalho ({len(linhas[0])} x {len(headers)})")
 check(apresentacao.cabecalho_planilha_ip(TODAS["ip"]) == headers,
-      "cabecalho gerado sai na ordem esperada, sem o X-Force desligado")
+      "cabecalho gerado sai na ordem esperada")
+check(t("csv_ibm_link") not in apresentacao.cabecalho_planilha_ip(TODAS["ip"] - {"ibm"}),
+      "e o X-Force desmarcado nao deixa coluna vazia na planilha")
+so_link = apresentacao.linha_planilha_ip(limpo, TODAS["ip"])[headers.index(t("csv_ibm_link"))]
+check(so_link == "https://exchange.xforce.ibmcloud.com/ip/1.1.1.1",
+      f"marcado, ele entra so com o endereco da pagina, sem consulta ({so_link!r})")
 
 caminho = exportacao.salvar_planilha(linhas, headers, filename="ip.xlsx", coluna_veredito=2)
 ws = load_workbook(caminho).active
@@ -85,7 +90,7 @@ h_headers = [t("csv_hash"), t("csv_verdict"), t("csv_vt_score"), t("csv_alien_sc
              t("csv_md_score"),
              t("csv_joe_verdict"), t("csv_joe_class"), t("csv_joe_behavior"),
              t("csv_file_name"), t("csv_last_analysis"), t("csv_vt_link"),
-             t("csv_alien_link"), t("csv_md_link"), t("csv_joe_link")]
+             t("csv_alien_link"), t("csv_md_link"), t("csv_joe_link"), t("csv_ibm_link")]
 h_linha = apresentacao.linha_planilha_hash(d_hash, TODAS["hash"])
 check(len(h_linha) == len(h_headers), f"linha de hash bate com o cabecalho ({len(h_linha)})")
 check(apresentacao.cabecalho_planilha_hash(TODAS["hash"]) == h_headers,
@@ -97,7 +102,8 @@ check(ws3.cell(2, 2).value == t("verdict_bad"), "veredito do hash na planilha")
 
 d_url = reputacao.build_url_result("exemplo.com", 4, "-", OTX_ZERO)
 u_headers = [t("csv_domain"), t("csv_verdict"), t("csv_vt_score"), t("csv_alien_score"),
-             t("csv_md_score"), t("csv_vt_link"), t("csv_alien_link"), t("csv_md_link")]
+             t("csv_md_score"), t("csv_vt_link"), t("csv_alien_link"), t("csv_md_link"),
+             t("csv_ibm_link")]
 u_linha = apresentacao.linha_planilha_url(d_url, TODAS["url"])
 check(len(u_linha) == len(u_headers), f"linha de dominio bate com o cabecalho ({len(u_linha)})")
 check(apresentacao.cabecalho_planilha_url(TODAS["url"]) == u_headers,

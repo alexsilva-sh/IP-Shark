@@ -7,6 +7,9 @@ from ui import fontes as catalogo
 from ui import tema
 from ui.widgets import Botao, Chip
 
+DICAS = {catalogo.API: "src_fast", catalogo.NAVEGADOR: "src_slow",
+         catalogo.REFERENCIA: "src_link_only"}
+
 
 class DialogoFontes(tk.Toplevel):
     def __init__(self, master, aba, selecionadas, ao_confirmar):
@@ -39,16 +42,16 @@ class DialogoFontes(tk.Toplevel):
             chip = Chip(linha, text=t(rotulo), variable=var)
             chip.pack(side="left")
             self.chips.append(chip)
-            dica = "src_fast" if tipo == catalogo.API else "src_slow"
+            dica = DICAS[tipo]
             tk.Label(linha, text=t(dica), bg=tema.FUNDO, fg=tema.TEXTO_SECUNDARIO,
                      font=tema.fonte("menor")).pack(side="left", padx=(tema.E2, 0))
 
         atalhos = tk.Frame(corpo, bg=tema.FUNDO)
         atalhos.pack(fill="x", pady=(14, 0))
         Botao(atalhos, text=t("src_all"), command=self._marcar_todas).pack(side="left")
-        # Numa aba em que toda fonte e de API o atalho nao mudaria nada, e botao que nao faz
-        # nada ensina errado sobre o que ele faz nas outras abas.
-        if catalogo.rapidas(aba) != catalogo.todas(aba):
+        # Sem fonte por navegador o atalho nao tira nada demorado, e botao que parece nao
+        # fazer nada ensina errado sobre o que ele faz nas outras abas.
+        if catalogo.tem_navegador(aba):
             Botao(atalhos, text=t("src_only_fast"),
                   command=self._marcar_rapidas).pack(side="left", padx=(tema.E2, 0))
 

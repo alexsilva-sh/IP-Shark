@@ -29,10 +29,20 @@ for aba in ABAS:
     check(not orfas, f"toda coluna mapeada em {aba} pertence a uma fonte do catalogo ({orfas})")
     check(catalogo.rapidas(aba) <= chaves and catalogo.rapidas(aba),
           f"as fontes rapidas de {aba} saem do proprio catalogo")
-    # Depois que o X-Force virou API, so a aba de hash tem fonte de navegador (JoeSandbox).
-    lentas = chaves - catalogo.rapidas(aba)
+    # So a aba de hash tem fonte de navegador (JoeSandbox); o X-Force nao e consultado.
+    lentas = {c for c, _r, tipo in catalogo.CATALOGO[aba] if tipo == catalogo.NAVEGADOR}
     check(lentas == ({"joe"} if aba == "hash" else set()),
           f"{aba}: fontes que dependem de navegador ({lentas})")
+    check(catalogo.tem_navegador(aba) == (aba == "hash"),
+          f"{aba}: o atalho 'so as rapidas' so aparece onde ha o que ele tire")
+    referencia = chaves - catalogo.rapidas(aba) - lentas
+    check(referencia == {"ibm"},
+          f"{aba}: o X-Force entra so como link, fora de API e de navegador ({referencia})")
+    check("ibm" not in catalogo.padrao(aba), f"{aba}: e vem desmarcado")
+    check(catalogo.referencias(aba, chaves) == {"ibm"},
+          f"{aba}: marcado, ele e a unica fonte que nao gera consulta")
+    check(catalogo.desligadas(aba, chaves - {"ibm"}) == [],
+          f"{aba}: X-Force desmarcado nao entra no resumo de fontes que ficaram de fora")
 for aba in ABAS:
     tipos = [tipo for _c, _r, tipo in catalogo.CATALOGO[aba]]
     check(tipos == sorted(tipos, key=lambda x: x != catalogo.API),

@@ -15,7 +15,7 @@ from ui.aba_url import AbaURL
 from ui.navegadores import DriverPool
 from ui.widgets import Botao, Cartao, Chip, MultilineInput, ResultTable, RotuloSecao
 
-VERSAO = "v4.2"
+VERSAO = "v4.2.1"
 
 _log = log.obter("app")
 

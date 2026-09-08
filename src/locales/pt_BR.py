@@ -232,10 +232,12 @@ STRINGS = {
     "src_intro": (
         "Desmarque o que não quer consultar. Fonte desmarcada não é consultada e não "
         "deixa o resultado incompleto — útil quando uma base está fora do ar ou quando "
-        "a pressa não permite esperar as consultas por navegador."
+        "a pressa não permite esperar as consultas por navegador. O IBM X-Force entra "
+        "apenas como link no relatório e na planilha, para consulta manual no portal."
     ),
     "src_fast": "API",
     "src_slow": "navegador, mais lento",
+    "src_link_only": "só o link, sem consulta",
     "src_all": "Marcar todas",
     "src_only_fast": "Só as rápidas",
     "src_apply": "Aplicar",
@@ -248,6 +250,7 @@ STRINGS = {
     "source_ipinfo": "IPinfo (localização)",
     "source_joe": "JoeSandbox",
     "source_assoc_ips": "IPs associados ao domínio",
+    "source_ibm": "IBM X-Force",
 
     # Config
     "btn_config_api": "🗝 Configurar API",
@@ -316,6 +319,7 @@ STRINGS = {
     "csv_vt_link": "Link VirusTotal",
     "csv_alien_link": "Link AlienVault",
     "csv_md_link": "Link MetaDefender",
+    "csv_ibm_link": "Link IBM X-Force",
     "csv_joe_link": "Link JoeSandbox",
     "csv_joe_verdict": "Veredito JoeSandbox",
     "csv_joe_class": "Classificação JoeSandbox",

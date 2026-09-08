@@ -229,10 +229,12 @@ STRINGS = {
     "src_intro": (
         "Uncheck what you don't want to query. An unchecked source is not queried and does "
         "not leave the result incomplete — useful when a source is down, or when there is "
-        "no time to wait for the browser-based lookups."
+        "no time to wait for the browser-based lookups. IBM X-Force only adds a link to "
+        "the report and the spreadsheet, for a manual check on their portal."
     ),
     "src_fast": "API",
     "src_slow": "browser, slower",
+    "src_link_only": "link only, no lookup",
     "src_all": "Check all",
     "src_only_fast": "Fast ones only",
     "src_apply": "Apply",
@@ -245,6 +247,7 @@ STRINGS = {
     "source_ipinfo": "IPinfo (location)",
     "source_joe": "JoeSandbox",
     "source_assoc_ips": "IPs associated with the domain",
+    "source_ibm": "IBM X-Force",
 
     # Config
     "btn_config_api": "🗝 Configure API",
@@ -313,6 +316,7 @@ STRINGS = {
     "csv_vt_link": "VirusTotal link",
     "csv_alien_link": "AlienVault link",
     "csv_md_link": "MetaDefender link",
+    "csv_ibm_link": "IBM X-Force link",
     "csv_joe_link": "JoeSandbox link",
     "csv_joe_verdict": "JoeSandbox verdict",
     "csv_joe_class": "JoeSandbox classification",

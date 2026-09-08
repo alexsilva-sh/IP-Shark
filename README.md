@@ -12,7 +12,7 @@ O IP Shark combina consultas em AbuseIPDB, VirusTotal, AlienVault, MetaDefender,
 ## 🔍 Funcionalidades Principais
 
 ### ⚙ Personalizar pesquisa
-Cada aba tem um botão **Personalizar pesquisa** que abre a escolha das fontes consultadas. Fonte desmarcada não é consultada e some do relatório, da tabela e da planilha. Ela também não deixa o resultado incompleto, então dá para tirar da conta uma base que está fora do ar sem que isso contamine o veredito. O atalho *Só as rápidas* deixa apenas as consultas por API, dispensando a única que depende de navegador (JoeSandbox). A escolha fica guardada e volta na próxima vez que você abrir o app — o resumo ao lado do botão mostra o que ficou de fora, para nenhuma fonte sumir sem você notar.
+Cada aba tem um botão **Personalizar pesquisa** que abre a escolha das fontes consultadas. Fonte desmarcada não é consultada e some do relatório, da tabela e da planilha. Ela também não deixa o resultado incompleto, então dá para tirar da conta uma base que está fora do ar sem que isso contamine o veredito. O atalho *Só as rápidas* deixa apenas as consultas por API, dispensando a única que depende de navegador (JoeSandbox). O IBM X-Force aparece na lista como fonte de referência: marcado, ele só acrescenta o link do portal ao relatório e à planilha. A escolha fica guardada e volta na próxima vez que você abrir o app — o resumo ao lado do botão mostra o que ficou de fora, para nenhuma fonte sumir sem você notar.
 
 
 ### 🚦 Veredito honesto
@@ -36,6 +36,7 @@ Cada fonte carrega o próprio estado, e o resultado diz o que aconteceu de verda
 - **AlienVault**: Pulsos de ameaça, família de malware e grupo atribuído.
 - **MetaDefender**: Contagem de motores que acusaram o arquivo.
 - **JoeSandbox**: Veredito da execução em sandbox, taxa de AV, comportamento observado e links do laudo completo e do relatório de IOC. Só aparece no resultado quando há análise, e um veredito `Malicious` sustenta má reputação por si só.
+- **IBM X-Force**: só o link da página do indicador no portal, para consulta manual. Vem desmarcado, porque a IBM fechou o X-Force Exchange atrás de login e a API gratuita não funciona mais. Marcando, o endereço passa a sair no relatório e na planilha, sem nenhuma consulta automática.
 - Exportação em **Excel (.xlsx)** com todos os links.
 
 ### 🌐 Análise de Domínios

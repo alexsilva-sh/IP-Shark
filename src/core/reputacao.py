@@ -171,7 +171,7 @@ def build_ip_result(ip, abuseipdb_result, virustotal_result, ibm_score,
         "links": {
             "abuse": f"https://www.abuseipdb.com/check/{ip}",
             "vt": f"https://www.virustotal.com/gui/ip-address/{ip}",
-            "ibm": f"https://exchange.xforce.ibmcloud.com/ip/{ip}" if ibm_score else None,
+            "ibm": f"https://exchange.xforce.ibmcloud.com/ip/{ip}",
             "md": LINK_MD if estado_md else None,
         },
     }

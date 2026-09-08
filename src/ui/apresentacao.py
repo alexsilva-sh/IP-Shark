@@ -348,6 +348,8 @@ def relatorio_ip(data, index=None, total=1, fontes=None):
         linhas.append(f"- {data['links']['vt']}")
     if data["links"].get("md"):
         linhas.append(f"- {data['links']['md']}")
+    if ativa(fontes, "ibm") and data["links"].get("ibm"):
+        linhas.append(f"- {data['links']['ibm']}")
     return "\n".join(linhas)
 
 
@@ -367,6 +369,7 @@ def _spec_planilha_ip():
         ("abuse", "csv_abuse_link", lambda d: d["links"]["abuse"]),
         ("vt", "csv_vt_link", lambda d: d["links"]["vt"]),
         ("md", "csv_md_link", lambda d: d["links"].get("md") or ""),
+        ("ibm", "csv_ibm_link", lambda d: d["links"].get("ibm") or ""),
     )
 
 
@@ -444,6 +447,8 @@ def relatorio_hash(data, fontes=None, index=None, total=1):
         linhas.append(f"- {data['links']['md']}")
     joe = data.get("joe") or {}
     linhas += [f"- {link}" for link in (joe.get("link_html"), joe.get("link_ioc")) if link]
+    if ativa(fontes, "ibm") and data["links"].get("ibm"):
+        linhas.append(f"- {data['links']['ibm']}")
     return "\n".join(linhas) + "\n"
 
 
@@ -464,6 +469,7 @@ def _spec_planilha_hash():
         ("alien", "csv_alien_link", lambda d: d["links"]["alien"]),
         ("md", "csv_md_link", lambda d: d["links"].get("md") or ""),
         ("joe", "csv_joe_link", lambda d: d["links"].get("joe") or ""),
+        ("ibm", "csv_ibm_link", lambda d: d["links"].get("ibm") or ""),
     )
 
 
@@ -506,6 +512,8 @@ def relatorio_url(data, fontes=None, index=None, total=1):
         linhas.append(f"- {data['links']['alien']}")
     if data["links"].get("md"):
         linhas.append(f"- {data['links']['md']}")
+    if ativa(fontes, "ibm") and data["links"].get("ibm"):
+        linhas.append(f"- {data['links']['ibm']}")
     return "\n".join(linhas)
 
 
@@ -520,6 +528,7 @@ def _spec_planilha_url():
         ("vt", "csv_vt_link", lambda d: d["links"]["vt"]),
         ("alien", "csv_alien_link", lambda d: d["links"]["alien"]),
         ("md", "csv_md_link", lambda d: d["links"].get("md") or ""),
+        ("ibm", "csv_ibm_link", lambda d: d["links"].get("ibm") or ""),
     )
 
 
