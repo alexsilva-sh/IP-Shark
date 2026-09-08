@@ -9,6 +9,7 @@ import pyperclip
 import requests
 
 import log
+from core import api
 from core.api import (
     check_dominio_metadefender,
     check_ip_abuseipdb,
@@ -83,7 +84,7 @@ class AbaURL:
     _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
 
     def _montar_aba_url(self):
-        self.fontes_url = fontes_catalogo.todas("url")
+        self.fontes_url = fontes_catalogo.padrao("url")
         self.fontes_url_varredura = set(self.fontes_url)
         self.results_url = []
         self.scanning_url = False
@@ -251,10 +252,20 @@ class AbaURL:
         fontes = self.fontes_url_varredura
         if self.stop_flag:
             return None
-        vt_score, estado_vt = None, None
+        # Os dominios da lista sao consultados um de cada vez, entao a folga de requisicoes
+        # cabe inteira nas fontes de API deste dominio.
+        tarefas = {}
         if "vt" in fontes:
-            result_vt, estado_vt = check_url_virustotal(url)
-            vt_score = result_vt.get("score")
+            tarefas["vt"] = lambda: check_url_virustotal(url)
+        if "alien" in fontes:
+            tarefas["alien"] = lambda: check_url_alienvault(url)
+        if "md" in fontes:
+            tarefas["md"] = lambda: check_dominio_metadefender(url)
+        respostas = api.em_paralelo(tarefas, api.largura_por_indicador(1))
+        result_vt, estado_vt = respostas.get("vt", (None, None))
+        vt_score = result_vt.get("score") if result_vt else None
+        alien, _alien_link, estado_alien = respostas.get("alien", (None, None, None))
+        md, estado_md = respostas.get("md", (None, None))
         if self.stop_flag:
             return None
         ibm_score, estado_ibm = "-", None
@@ -262,12 +273,6 @@ class AbaURL:
             ibm_score, estado_ibm = self._consultar_ibm(check_url_ibm, url)
         if self.stop_flag:
             return None
-        alien, estado_alien = None, None
-        if "alien" in fontes:
-            alien, _alien_link, estado_alien = check_url_alienvault(url)
-        if self.stop_flag:
-            return None
-        md, estado_md = check_dominio_metadefender(url) if "md" in fontes else (None, None)
         return build_url_result(url, vt_score, ibm_score, alien,
                                 estado_vt=estado_vt, estado_ibm=estado_ibm,
                                 estado_alien=estado_alien, md=md, estado_md=estado_md)
@@ -309,11 +314,17 @@ class AbaURL:
     def process_url_ip_associated(self, ip, domain):
         fontes = self._fontes_ip_associado()
         try:
-            abuseipdb_result, estado_abuse = check_ip_abuseipdb(ip)
-            virustotal_result, estado_vt = (
-                check_ip_virustotal(ip) if "vt" in fontes else (None, None))
-            md, estado_md = check_ip_metadefender(ip) if "md" in fontes else (None, None)
-            city, country = get_location(ip)
+            tarefas = {"abuse": lambda: check_ip_abuseipdb(ip),
+                       "local": lambda: get_location(ip)}
+            if "vt" in fontes:
+                tarefas["vt"] = lambda: check_ip_virustotal(ip)
+            if "md" in fontes:
+                tarefas["md"] = lambda: check_ip_metadefender(ip)
+            respostas = api.em_paralelo(tarefas, api.largura_por_indicador(1))
+            abuseipdb_result, estado_abuse = respostas["abuse"]
+            city, country = respostas["local"]
+            virustotal_result, estado_vt = respostas.get("vt", (None, None))
+            md, estado_md = respostas.get("md", (None, None))
             assoc_domain = get_domain_from_abuseipdb(abuseipdb_result)
             ibm_score, estado_ibm = None, None
             if "ibm" in fontes:

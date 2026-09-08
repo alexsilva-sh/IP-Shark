@@ -328,6 +328,7 @@ STRINGS = {
     "col_md": "MetaDefender",
     "col_joe": "JoeSandbox",
     "col_country": "Country",
+    "col_domain": "Domain",
     "col_file": "File",
     "verdict_clean": "● Clean",
     "verdict_whitelisted": "● Clean (whitelisted)",
@@ -359,6 +360,10 @@ STRINGS = {
     # Per-source state
     "source_unavailable": "lookup failed",
     "source_no_key": "API key not configured",
+    "source_no_session": "portal requires a login",
+    "xforce_session_warning": (
+        "IBM X-Force only answers users signed in to the portal, which is why it ships disabled. Clear it under “Customize search” so it stops leaving the analysis incomplete."
+    ),
     "source_quota": "API quota exhausted",
     "source_no_data": "no records",
     "sources_incomplete": "Incomplete analysis - no response from: {fontes}",

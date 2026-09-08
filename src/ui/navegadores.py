@@ -35,9 +35,14 @@ class DriverPool:
         self.ultimo_erro = ""
         self.boot_concluido = threading.Event()
         self._lock = threading.Lock()
+        self._boot_pedido = False
         self._ao_degradar = ao_degradar
 
     def iniciar_async(self):
+        with self._lock:
+            if self._boot_pedido:
+                return
+            self._boot_pedido = True
         Thread(target=self._boot, daemon=True).start()
 
     def _boot(self):
@@ -68,7 +73,13 @@ class DriverPool:
 
     @contextmanager
     def emprestar(self):
-        """Empresta um driver; levanta DriverIndisponivel em vez de pendurar para sempre."""
+        """Empresta um driver; levanta DriverIndisponivel em vez de pendurar para sempre.
+
+        Sobe o pool se ninguem o tiver pedido ainda: desde que o X-Force saiu do conjunto
+        padrao, a maioria das sessoes nunca precisa de navegador nenhum, e tres Chrome
+        headless no boot eram memoria e tempo gastos a toa.
+        """
+        self.iniciar_async()
         if self.boot_concluido.is_set() and self.vivos == 0:
             raise DriverIndisponivel(0, self.tamanho)
         try:
@@ -112,6 +123,7 @@ class DriverPool:
             drivers = set(self.todos)
             self.todos.clear()
             self.vivos = 0
+            self._boot_pedido = False
         while True:
             try:
                 drivers.add(self.fila.get_nowait())

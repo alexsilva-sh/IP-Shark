@@ -12,6 +12,7 @@ from core.api import (
     FONTE_INDISPONIVEL,
     FONTE_OK,
     FONTE_SEM_DADOS,
+    FONTE_SEM_SESSAO,
     safe_get,
 )
 
@@ -78,6 +79,8 @@ def classificar_ibm(valor):
     if valor is None:
         return None      # fonte nao consultada
     bruto = str(valor).strip().lower()
+    if bruto == "login":
+        return FONTE_SEM_SESSAO
     if bruto == "error":
         return FONTE_INDISPONIVEL
     if bruto == "unknown":

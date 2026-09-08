@@ -42,8 +42,10 @@ class AbaIP:
     _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
 
     def _montar_aba_ip(self):
-        self.fontes_ip = fontes_catalogo.todas("ip")
+        self.fontes_ip = fontes_catalogo.padrao("ip")
         self.fontes_ip_varredura = set(self.fontes_ip)
+        # Recalculado a cada varredura, a partir do tamanho da lista.
+        self.largura_fontes_ip = api.largura_por_indicador(1)
         self.results_ip = []
         self.scanning_ip = False
         self.currently_processing = set()
@@ -100,6 +102,7 @@ class AbaIP:
             ("vt", "col_vt", 95, "center"),
             ("ibm", "col_ibm", 85, "center"),
             ("md", "col_md", 120, "center"),
+            ("dominio", "col_domain", 190, "w"),
             ("pais", "col_country", 170, "w"),
         ])
 
@@ -161,6 +164,7 @@ class AbaIP:
         # Congela a escolha: mexer no modal durante a varredura desalinharia a planilha, que
         # so e montada no fim.
         self.fontes_ip_varredura = set(self.fontes_ip)
+        self.largura_fontes_ip = api.largura_por_indicador(len(ips))
         self.total_ip, self.feitos_ip = len(ips), 0
         self.check_button.config(state="disabled")
         self._update_action_buttons()
@@ -220,18 +224,22 @@ class AbaIP:
         self._track_processing(self.currently_processing, ip, True, self.update_status_label)
         if self.stop_flag:
             return None
-        abuseipdb_result, estado_abuse = (
-            check_ip_abuseipdb(ip) if "abuse" in fontes else (None, None))
-        if self.stop_flag:
-            return None
-        virustotal_result, estado_vt = (
-            check_ip_virustotal(ip) if "vt" in fontes else (None, None))
-        if self.stop_flag:
-            return None
-        md, estado_md = check_ip_metadefender(ip) if "md" in fontes else (None, None)
-        if self.stop_flag:
-            return None
-        city, country = get_location(ip) if "local" in fontes else ("-", "-")
+        # As fontes de API do mesmo IP vao juntas quando a lista e curta: em serie, quem
+        # consulta um IP so esperava a soma de todas em vez da mais lenta.
+        tarefas = {}
+        if "abuse" in fontes:
+            tarefas["abuse"] = lambda: check_ip_abuseipdb(ip)
+        if "vt" in fontes:
+            tarefas["vt"] = lambda: check_ip_virustotal(ip)
+        if "md" in fontes:
+            tarefas["md"] = lambda: check_ip_metadefender(ip)
+        if "local" in fontes:
+            tarefas["local"] = lambda: get_location(ip)
+        respostas = api.em_paralelo(tarefas, self.largura_fontes_ip)
+        abuseipdb_result, estado_abuse = respostas.get("abuse", (None, None))
+        virustotal_result, estado_vt = respostas.get("vt", (None, None))
+        md, estado_md = respostas.get("md", (None, None))
+        city, country = respostas.get("local", ("-", "-"))
         domain = get_domain_from_abuseipdb(abuseipdb_result)
         ibm_score, estado_ibm = None, None
         if "ibm" in fontes and not self.stop_flag:

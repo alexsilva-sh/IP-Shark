@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 import requests
@@ -28,8 +29,9 @@ FONTE_SEM_DADOS = "sem_dados"        # respondeu, mas nao conhece o indicador
 FONTE_SEM_CHAVE = "sem_chave"        # chave ausente ou recusada
 FONTE_COTA = "cota"                  # HTTP 429
 FONTE_INDISPONIVEL = "indisponivel"  # rede, timeout, 5xx, resposta ilegivel
+FONTE_SEM_SESSAO = "sem_sessao"      # X-Force: portal exigiu login IBMid
 
-ESTADOS_SEM_RESPOSTA = (FONTE_SEM_CHAVE, FONTE_COTA, FONTE_INDISPONIVEL)
+ESTADOS_SEM_RESPOSTA = (FONTE_SEM_CHAVE, FONTE_COTA, FONTE_INDISPONIVEL, FONTE_SEM_SESSAO)
 
 # Retentativa por fonte e por indicador. So para indisponibilidade: cota, chave recusada
 # e "sem registros" nao melhoram insistindo, e o Retry-After de cota diaria vem em horas.
@@ -56,6 +58,35 @@ def tentativas():
         if numero > 1:
             time.sleep(PAUSA_RETENTATIVA * (numero - 1))
         yield numero
+
+
+# Teto de requisicoes simultaneas da varredura inteira. A varredura ja abre uma thread por
+# indicador ate este limite; o que sobra e o que pode ser gasto consultando as fontes de um
+# mesmo indicador ao mesmo tempo. Sem esse teto comum, uma lista longa multiplicaria os dois
+# paralelismos e bateria na cota das APIs em vez de andar mais rapido.
+LIMITE_REQUISICOES = 10
+
+
+def largura_por_indicador(total_indicadores):
+    """Quantas fontes do mesmo indicador podem ir a rede juntas.
+
+    Um indicador sozinho -- o caso de quem cola um IP e espera -- usa a folga toda e reduz a
+    espera a da fonte mais lenta, em vez da soma de todas. Uma lista longa devolve 1, e a
+    consulta segue em serie como sempre foi.
+    """
+    return max(1, LIMITE_REQUISICOES // max(1, total_indicadores))
+
+
+def em_paralelo(tarefas, largura):
+    """{chave: funcao} -> {chave: retorno}, preservando a ordem de insercao.
+
+    Excecao de uma fonte sobe como subiria em serie: quem chama ja trata a linha inteira.
+    """
+    if largura <= 1 or len(tarefas) <= 1:
+        return {chave: funcao() for chave, funcao in tarefas.items()}
+    with ThreadPoolExecutor(max_workers=min(largura, len(tarefas))) as executor:
+        futuros = {chave: executor.submit(funcao) for chave, funcao in tarefas.items()}
+        return {chave: futuro.result() for chave, futuro in futuros.items()}
 
 
 # Uma Session por thread, nao uma compartilhada: a Session do requests nao e thread-safe

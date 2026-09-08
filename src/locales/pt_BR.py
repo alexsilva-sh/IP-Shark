@@ -332,6 +332,7 @@ STRINGS = {
     "col_md": "MetaDefender",
     "col_joe": "JoeSandbox",
     "col_country": "País",
+    "col_domain": "Domínio",
     "col_file": "Arquivo",
     "verdict_clean": "● Limpo",
     "verdict_whitelisted": "● Limpo (whitelist)",
@@ -363,6 +364,10 @@ STRINGS = {
     # Estados por fonte
     "source_unavailable": "falha na consulta",
     "source_no_key": "chave não configurada",
+    "source_no_session": "exige login no portal",
+    "xforce_session_warning": (
+        "O IBM X-Force só responde a quem está logado no portal, e por isso vem desligado. Desmarque-o em “Personalizar pesquisa” para que ele pare de deixar a análise incompleta."
+    ),
     "source_quota": "cota da API esgotada",
     "source_no_data": "sem registros",
     "sources_incomplete": "Análise incompleta — não responderam: {fontes}",

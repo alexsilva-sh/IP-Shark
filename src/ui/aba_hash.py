@@ -6,6 +6,7 @@ from tkinter import messagebox, ttk
 
 import pyperclip
 
+from core import api
 from core.api import check_hash_alienvault, check_hash_metadefender, check_hash_virustotal
 from core.navegador import check_hash_ibm, check_hash_joesandbox
 from core.reputacao import build_hash_result
@@ -33,7 +34,7 @@ class AbaHash:
     _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
 
     def _montar_aba_hash(self):
-        self.fontes_hash = fontes_catalogo.todas("hash")
+        self.fontes_hash = fontes_catalogo.padrao("hash")
         self.fontes_hash_varredura = set(self.fontes_hash)
         self.results_hash = []
         self.scanning_hash = False
@@ -189,12 +190,19 @@ class AbaHash:
             ibm_score, estado_ibm = self._consultar_ibm(
                 lambda d, alvo: check_hash_ibm(d, alvo)[1], h)
 
-        alien, estado_alien = None, None
+        # Os hashes da lista ja sao consultados um de cada vez, entao a folga inteira de
+        # requisicoes cabe nas fontes de API deste hash.
+        tarefas = {}
         if "alien" in fontes:
-            alien, _alien_link, estado_alien = check_hash_alienvault(h)
-        virustotal_result, estado_vt = (
-            check_hash_virustotal(h) if "vt" in fontes else (None, None))
-        md, estado_md = check_hash_metadefender(h) if "md" in fontes else (None, None)
+            tarefas["alien"] = lambda: check_hash_alienvault(h)
+        if "vt" in fontes:
+            tarefas["vt"] = lambda: check_hash_virustotal(h)
+        if "md" in fontes:
+            tarefas["md"] = lambda: check_hash_metadefender(h)
+        respostas = api.em_paralelo(tarefas, api.largura_por_indicador(1))
+        alien, _alien_link, estado_alien = respostas.get("alien", (None, None, None))
+        virustotal_result, estado_vt = respostas.get("vt", (None, None))
+        md, estado_md = respostas.get("md", (None, None))
 
         joe = None
         if "joe" in fontes:

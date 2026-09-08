@@ -62,6 +62,21 @@ def _fechar_aba(driver):
     driver.switch_to.window(driver.window_handles[0])
 
 
+# O portal do X-Force passou a exigir IBMid, e a tela de login nao devolve erro nem 403: ela
+# so troca o conteudo da pagina. Sem estas marcas, o portal fechado sairia como "pagina
+# ilegivel", que e retentada tres vezes e culpa a rede por algo que nenhuma retentativa
+# resolve. A sessao do portal nao da para reaproveitar: ela vive num cookie de sessao que o
+# X-Force invalida assim que ele aparece noutro navegador.
+_MARCAS_LOGIN = ("create ibmid", "agree to the terms of service", "login.ibm.com")
+
+
+def _exige_login(driver):
+    try:
+        return any(marca in driver.page_source.lower() for marca in _MARCAS_LOGIN)
+    except Exception:
+        return False
+
+
 def check_ip_ibm(driver, ip):
     """Placar do X-Force para um IP.
 
@@ -89,8 +104,11 @@ def check_ip_ibm(driver, ip):
             else:
                 risk_score = "error"
     except Exception as e:
-        _log.warning("X-Force de IP nao rendeu placar legivel: %s", type(e).__name__)
-        risk_score = "error"
+        if _exige_login(driver):
+            risk_score = "login"
+        else:
+            _log.warning("X-Force de IP nao rendeu placar legivel: %s", type(e).__name__)
+            risk_score = "error"
     restante = PISO_XFORCE_IP - (time.monotonic() - inicio)
     if restante > 0:
         time.sleep(restante)
@@ -115,8 +133,11 @@ def check_hash_ibm(driver, hash_str):
         else:
             score = "unknown"
     except Exception as e:
-        _log.warning("X-Force de hash nao rendeu placar legivel: %s", type(e).__name__)
-        score = "error"
+        if _exige_login(driver):
+            score = "login"
+        else:
+            _log.warning("X-Force de hash nao rendeu placar legivel: %s", type(e).__name__)
+            score = "error"
     _fechar_aba(driver)
     return hash_str, score
 
@@ -134,6 +155,8 @@ def check_url_ibm(driver, url):
         elem = soup.find("h2", class_="scorebackgroundfilter numtitle")
         return elem.text.strip() if elem else "unknown"
     except Exception as e:
+        if _exige_login(driver):
+            return "login"
         _log.warning("X-Force de dominio nao rendeu placar legivel: %s", type(e).__name__)
         return "error"
 

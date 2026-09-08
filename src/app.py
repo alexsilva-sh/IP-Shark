@@ -1,4 +1,5 @@
 """Janela principal: monta as abas e guarda o que as tres compartilham."""
+import threading
 import tkinter as tk
 from datetime import datetime
 from tkinter import ttk
@@ -16,7 +17,7 @@ from ui.aba_url import AbaURL
 from ui.navegadores import DriverIndisponivel, DriverPool
 from ui.widgets import Botao, Cartao, Chip, MultilineInput, ResultTable, RotuloSecao
 
-VERSAO = "v4.0"
+VERSAO = "v4.1"
 
 _log = log.obter("app")
 
@@ -77,8 +78,9 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         self.tab_frame.pack(fill="x", padx=tema.E2, pady=(tema.E4, 0))
 
         self.driver_pool = DriverPool(ao_degradar=self._avisar_pool_degradado)
-        self._init_drivers_async()
-
+        # Ligado na primeira recusa do portal; ver _desligar_xforce.
+        self.xforce_pediu_login = False
+        self._lock_xforce = threading.Lock()
         self._montar_aba_ip()
         self._montar_aba_hash()
         self._montar_aba_url()
@@ -278,11 +280,25 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         self.titulo_pagina.config(text=t({"ip": "tab_ip", "hash": "tab_hash",
                                           "url": "tab_domain"}[nome]))
         self._desenhar_historico()
+        self._aquecer_navegadores(nome)
 
     # ---------- navegadores ----------
 
     def _init_drivers_async(self, count=3):
         self.driver_pool.iniciar_async()
+
+    def _aquecer_navegadores(self, aba):
+        """Adianta o boot ao abrir uma aba que consulta fonte de navegador.
+
+        Sem isto o pool so subiria no primeiro emprestimo, e a espera do Chrome apareceria
+        como lentidao da primeira consulta.
+        """
+        if fontes_catalogo.usa_navegador(aba, self._fontes_da_aba(aba)):
+            self._init_drivers_async()
+
+    def _fontes_da_aba(self, aba):
+        return {"ip": self.fontes_ip, "hash": self.fontes_hash,
+                "url": self.fontes_url}[aba]
 
     def _avisar_pool_degradado(self, vivos, tamanho, erro):
         chave = "drivers_none" if vivos == 0 else "drivers_degraded"
@@ -301,6 +317,8 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         Pagina ilegivel e retentada como nas fontes HTTP; falta de navegador nao, que o
         emprestimo ja espera a sua vez por conta propria.
         """
+        if self.xforce_pediu_login:
+            return None, api.FONTE_SEM_SESSAO
         for _ in api.tentativas():
             try:
                 with self.driver_pool.emprestar() as driver:
@@ -310,7 +328,22 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
             estado = classificar_ibm(score)
             if estado != api.FONTE_INDISPONIVEL or self.stop_flag:
                 break
+        if estado == api.FONTE_SEM_SESSAO:
+            self._desligar_xforce()
         return (t("unknown") if estado == api.FONTE_SEM_DADOS else score), estado
+
+    def _desligar_xforce(self):
+        """Primeira recusa do portal encerra as consultas ao X-Force por esta sessao.
+
+        Descobrir de novo custa caro: cada indicador espera os 18 s do carregamento da pagina
+        para reencontrar a mesma tela de IBMid, e numa lista de cinquenta IPs isso e o
+        grosso da varredura. O estado devolvido nao muda -- so deixa de ser pago.
+        """
+        with self._lock_xforce:
+            primeira_recusa = not self.xforce_pediu_login
+            self.xforce_pediu_login = True
+        if primeira_recusa:
+            self._ui(self.mostrar_aviso, t("xforce_session_warning"))
 
     # ---------- interface ----------
 

@@ -97,7 +97,8 @@ print("\n[5] Um botao por aba, e o resumo diz o que ficou de fora")
 for aba, botao in (("ip", app.botao_fontes_ip), ("hash", app.botao_fontes_hash),
                    ("url", app.botao_fontes_url)):
     check(botao._texto == t("btn_customize"), f"aba de {aba} tem o botao unico")
-check(app.fontes_ip == catalogo.todas("ip"), "comeca com todas as fontes marcadas")
+check(app.fontes_ip == catalogo.padrao("ip"),
+      "comeca com o padrao marcado -- o X-Force fica de fora, exigindo login no portal")
 check(app._resumo_fontes("ip", catalogo.todas("ip")) == "",
       "com tudo ligado o resumo fica vazio, sem poluir a tela")
 resumo = app._resumo_fontes("hash", catalogo.rapidas("hash"))

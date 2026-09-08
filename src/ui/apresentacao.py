@@ -28,6 +28,7 @@ VERDICT_TAGS = {
 
 ESTADO_TEXTO = {
     api.FONTE_SEM_CHAVE: "source_no_key",
+    api.FONTE_SEM_SESSAO: "source_no_session",
     api.FONTE_COTA: "source_quota",
     api.FONTE_INDISPONIVEL: "source_unavailable",
     api.FONTE_SEM_DADOS: "source_no_data",
@@ -356,7 +357,22 @@ def colunas_ip(data, ultima, fontes=None):
             _celula(data, "vt", fontes, lambda d: d["vt_score"]),
             _celula(data, "ibm", fontes, lambda d: d["ibm_score"] or "-"),
             _celula(data, "md", fontes, lambda d: md_placar(d) or "-"),
+            dominio_da_tabela(data, fontes),
             ultima)
+
+
+def dominio_da_tabela(data, fontes=None):
+    """Nome de dominio do IP, que ja vinha no relatorio e faltava na tabela.
+
+    Vem do AbuseIPDB, entao segue o estado dele: sem resposta nao vira '-', que ali significa
+    'o IP nao tem dominio'.
+    """
+    if not ativa(fontes, "abuse"):
+        return ""
+    if _estado(data, "abuse") != api.FONTE_OK:
+        return coluna_fonte(None, _estado(data, "abuse"))
+    dominio = data.get("domain")
+    return dominio if dominio and dominio != "N/A" else "-"
 
 
 def nome_do_arquivo(data):

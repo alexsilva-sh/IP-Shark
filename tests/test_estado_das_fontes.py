@@ -585,5 +585,31 @@ check(apresentacao.colunas_hash(h_limpo, SEM_IBM["hash"])[-1] != "nota.txt",
 check(apresentacao.colunas_url(u_fora, SEM_IBM["url"])[1] == t("verdict_incomplete"),
       "veredito da linha de dominio e incompleto")
 
+print("\n[13] A tabela de IP mostra o dominio, que so vivia no relatorio")
+ip_com_dominio = reputacao.build_ip_result(
+    "9.9.9.9", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "dns9.quad9.net",
+    estado_abuse=core.FONTE_OK, estado_vt=core.FONTE_OK, estado_ibm=None)
+colunas = apresentacao.colunas_ip(ip_com_dominio, "p", SEM_IBM["ip"])
+check("dns9.quad9.net" in colunas, f"o nome de dominio chega a tabela ({colunas})")
+check(colunas[-1] == "p", "e o pais continua sendo a ultima coluna")
+
+ip_sem_dominio = reputacao.build_ip_result(
+    "9.9.9.9", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "N/A",
+    estado_abuse=core.FONTE_OK, estado_vt=core.FONTE_OK, estado_ibm=None)
+check(apresentacao.dominio_da_tabela(ip_sem_dominio, SEM_IBM["ip"]) == "-",
+      "IP sem dominio mostra tracinho, nao 'N/A'")
+
+ip_abuse_fora = reputacao.build_ip_result(
+    "9.9.9.9", None, VT_LIMPO, None, "c", "p", "N/A",
+    estado_abuse=core.FONTE_INDISPONIVEL, estado_vt=core.FONTE_OK, estado_ibm=None)
+check(apresentacao.dominio_da_tabela(ip_abuse_fora, SEM_IBM["ip"]) == "!",
+      "AbuseIPDB fora do ar marca a celula, em vez de afirmar que o IP nao tem dominio")
+
+sem_abuse = SEM_IBM["ip"] - {"abuse"}
+check(apresentacao.dominio_da_tabela(ip_com_dominio, sem_abuse) == "",
+      "e com o AbuseIPDB desmarcado a celula fica vazia")
+check("dominio" in catalogo.colunas_ocultas("ip", sem_abuse),
+      "porque a coluna some junto com a fonte que a alimenta")
+
 root.destroy()
 encerrar()
