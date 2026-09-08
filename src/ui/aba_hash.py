@@ -6,9 +6,10 @@ from tkinter import messagebox, ttk
 
 import pyperclip
 
+import preferencias
 from core import api
 from core.api import check_hash_alienvault, check_hash_metadefender, check_hash_virustotal
-from core.navegador import check_hash_ibm, check_hash_joesandbox
+from core.navegador import check_hash_joesandbox
 from core.reputacao import build_hash_result
 from i18n import plural, t
 from services.exportacao import salvar_planilha
@@ -23,6 +24,7 @@ from ui.apresentacao import (
     fontes_em_cota,
     linha_planilha_hash,
     relatorio_hash,
+    sem_repetidos,
 )
 from ui.dialogo_fontes import DialogoFontes
 from ui.navegadores import DriverIndisponivel
@@ -31,10 +33,11 @@ from ui.widgets import Botao, Chip
 
 class AbaHash:
     """Mixin de IPCheckerApp. Usa a infraestrutura compartilhada da janela principal:
-    _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
+    _ui, _track_processing, exportar_planilha, _update_action_buttons e stop_flag."""
 
     def _montar_aba_hash(self):
-        self.fontes_hash = fontes_catalogo.padrao("hash")
+        self.fontes_hash = fontes_catalogo.escolha_salva(
+            "hash", preferencias.carregar().get("fontes"))
         self.fontes_hash_varredura = set(self.fontes_hash)
         self.results_hash = []
         self.scanning_hash = False
@@ -89,7 +92,6 @@ class AbaHash:
             ("veredito", "col_verdict", 175, "w"),
             ("arquivo", "col_file", 250, "w"),
             ("vt", "col_vt", 95, "center"),
-            ("ibm", "col_ibm", 85, "center"),
             ("alien", "col_alien", 110, "center"),
             ("md", "col_md", 120, "center"),
             ("joe", "col_joe", 110, "center"),
@@ -116,6 +118,7 @@ class AbaHash:
 
     def _aplicar_fontes_hash(self, escolhidas):
         self.fontes_hash = escolhidas
+        self.guardar_escolha_de_fontes("hash", escolhidas)
         self.resumo_fontes_hash.config(text=self._resumo_fontes("hash", escolhidas))
         self.tabela_hash.ocultar_colunas(fontes_catalogo.colunas_ocultas("hash", escolhidas))
 
@@ -136,6 +139,7 @@ class AbaHash:
                 hash_list.append(h)
             else:
                 invalid_hashes.append(h)
+        hash_list = sem_repetidos(hash_list)
         if not hash_list:
             messagebox.showerror(t("error"), t("no_valid_hash"))
             return
@@ -186,9 +190,6 @@ class AbaHash:
         """Fonte desmarcada nao e consultada e chega ao nucleo com estado None."""
         fontes = self.fontes_hash_varredura
         ibm_score, estado_ibm = "-", None
-        if "ibm" in fontes:
-            ibm_score, estado_ibm = self._consultar_ibm(
-                lambda d, alvo: check_hash_ibm(d, alvo)[1], h)
 
         # Os hashes da lista ja sao consultados um de cada vez, entao a folga inteira de
         # requisicoes cabe nas fontes de API deste hash.
@@ -279,6 +280,6 @@ class AbaHash:
             messagebox.showwarning(t("done"), t("no_results"))
             return
         headers = cabecalho_planilha_hash(self.fontes_hash_varredura)
-        salvar_planilha(self.results_hash, headers, filename="hash_results.xlsx",
-                        parent=self.root, titulo=t("select_folder"), coluna_veredito=2,
-                        aba=t("csv_sheet_results"))
+        self.exportar_planilha(salvar_planilha, results=self.results_hash, headers=headers,
+                               filename="hash_results.xlsx", titulo=t("select_folder"),
+                               coluna_veredito=2, aba=t("csv_sheet_results"))

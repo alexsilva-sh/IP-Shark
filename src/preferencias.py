@@ -17,7 +17,7 @@ _log = log.obter("preferencias")
 NOME_PASTA = "IPShark"
 NOME_ARQUIVO = "preferencias.json"
 
-PADRAO = {"tema": "escuro", "escala": 0, "idioma": "pt"}
+PADRAO = {"tema": "escuro", "escala": 0, "idioma": "pt", "fontes": {}}
 
 
 def pasta_dados() -> str:

@@ -5,6 +5,8 @@ STRINGS = {
     "unknown": "Desconhecido",
     "cancelled": "CANCELADO",
     "scan_cancelled": "Consulta interrompida pelo usuário.",
+    "export_done": "Planilha salva em:\n{caminho}",
+    "export_error": "Não foi possível salvar a planilha: {motivo}.\nSe o arquivo estiver aberto no Excel, feche-o e tente de novo.",
     "no_results": "Nenhum resultado disponível.",
     "no_records": "Sem registros",
 
@@ -111,7 +113,6 @@ STRINGS = {
 
     # Scores
     "vt_score": "Score VirusTotal",
-    "ibm_score": "Score IBM",
     "alien_score": "AlienVault",
     "md_score": "Score MetaDefender",
     "count_pulse": "pulso",
@@ -245,7 +246,6 @@ STRINGS = {
     "source_md": "MetaDefender",
     "source_alien": "AlienVault",
     "source_ipinfo": "IPinfo (localização)",
-    "source_ibm": "IBM X-Force",
     "source_joe": "JoeSandbox",
     "source_assoc_ips": "IPs associados ao domínio",
 
@@ -305,7 +305,6 @@ STRINGS = {
     "csv_verdict": "Veredito",
     "csv_abuse_score": "Score AbuseIPDB",
     "csv_vt_score": "Score VirusTotal",
-    "csv_ibm_score": "Score IBM",
     "csv_alien_score": "AlienVault",
     "csv_md_score": "MetaDefender",
     "csv_country": "País",
@@ -315,7 +314,6 @@ STRINGS = {
     "csv_last_analysis": "Última Análise",
     "csv_abuse_link": "Link AbuseIPDB",
     "csv_vt_link": "Link VirusTotal",
-    "csv_ibm_link": "Link IBM",
     "csv_alien_link": "Link AlienVault",
     "csv_md_link": "Link MetaDefender",
     "csv_joe_link": "Link JoeSandbox",
@@ -327,7 +325,6 @@ STRINGS = {
     "col_verdict": "Veredito",
     "col_abuse": "AbuseIPDB",
     "col_vt": "VirusTotal",
-    "col_ibm": "X-Force",
     "col_alien": "AlienVault",
     "col_md": "MetaDefender",
     "col_joe": "JoeSandbox",
@@ -364,10 +361,6 @@ STRINGS = {
     # Estados por fonte
     "source_unavailable": "falha na consulta",
     "source_no_key": "chave não configurada",
-    "source_no_session": "exige login no portal",
-    "xforce_session_warning": (
-        "O IBM X-Force só responde a quem está logado no portal, e por isso vem desligado. Desmarque-o em “Personalizar pesquisa” para que ele pare de deixar a análise incompleta."
-    ),
     "source_quota": "cota da API esgotada",
     "source_no_data": "sem registros",
     "sources_incomplete": "Análise incompleta — não responderam: {fontes}",
@@ -387,6 +380,7 @@ STRINGS = {
     "count_valid": "válidos",
     "count_invalid": "inválidos",
     "count_private": "privados",
+    "count_duplicate": "repetidos",
     "skipped_items": "Ignorados",
     "progress_done": "{feitos}/{total}",
     "associated_to_domain": "associado ao domínio",

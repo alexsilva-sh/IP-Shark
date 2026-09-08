@@ -12,7 +12,6 @@ from core.api import (
     FONTE_INDISPONIVEL,
     FONTE_OK,
     FONTE_SEM_DADOS,
-    FONTE_SEM_SESSAO,
     safe_get,
 )
 
@@ -72,20 +71,6 @@ def is_whitelisted_abuseipdb(abuseipdb_result):
         return bool(abuseipdb_result["data"].get("isWhitelisted", False))
     except (KeyError, TypeError, AttributeError):
         return False
-
-
-def classificar_ibm(valor):
-    """Traduz o retorno do scraping do X-Force para um estado de fonte."""
-    if valor is None:
-        return None      # fonte nao consultada
-    bruto = str(valor).strip().lower()
-    if bruto == "login":
-        return FONTE_SEM_SESSAO
-    if bruto == "error":
-        return FONTE_INDISPONIVEL
-    if bruto == "unknown":
-        return FONTE_SEM_DADOS
-    return FONTE_OK
 
 
 def _fontes_indisponiveis(pares):

@@ -27,8 +27,12 @@ for aba in ABAS:
     check(len(chaves) == len(catalogo.CATALOGO[aba]), f"sem chave repetida em {aba}")
     orfas = set(catalogo.COLUNAS[aba]) - chaves
     check(not orfas, f"toda coluna mapeada em {aba} pertence a uma fonte do catalogo ({orfas})")
-    check(catalogo.rapidas(aba) and catalogo.rapidas(aba) != chaves,
-          f"{aba} tem fontes de API e ao menos uma de navegador")
+    check(catalogo.rapidas(aba) <= chaves and catalogo.rapidas(aba),
+          f"as fontes rapidas de {aba} saem do proprio catalogo")
+    # Depois que o X-Force virou API, so a aba de hash tem fonte de navegador (JoeSandbox).
+    lentas = chaves - catalogo.rapidas(aba)
+    check(lentas == ({"joe"} if aba == "hash" else set()),
+          f"{aba}: fontes que dependem de navegador ({lentas})")
 for aba in ABAS:
     tipos = [tipo for _c, _r, tipo in catalogo.CATALOGO[aba]]
     check(tipos == sorted(tipos, key=lambda x: x != catalogo.API),
@@ -71,11 +75,11 @@ for aba in ABAS:
           f"{aba}: cabecalho e linha batem nas {total} combinacoes ({desalinhadas[:2]})")
 
 print("\n[3] O relatorio nao cita a fonte que nao foi consultada")
-so_apis = catalogo.rapidas("hash")
+so_apis = catalogo.todas("hash") - {"joe"}
 texto = apresentacao.relatorio_hash(dados["hash"], so_apis)
-check(t("ibm_score") not in texto, "X-Force desligado nao aparece no relatorio de hash")
+check(t("joe_score") not in texto, "JoeSandbox desligado nao aparece no relatorio de hash")
 check(t("vt_score") in texto, "e o que ficou ligado continua aparecendo")
-check(apresentacao.relatorio_hash(dados["hash"], {"ibm"}).count(t("alien_score")) == 0,
+check(apresentacao.relatorio_hash(dados["hash"], {"vt"}).count(t("alien_score")) == 0,
       "AlienVault desligado tambem sai do relatorio")
 ip_sem_local = apresentacao.relatorio_ip(dados["ip"], fontes=catalogo.todas("ip") - {"local"})
 check(t("country_city_label") not in ip_sem_local,
@@ -84,7 +88,7 @@ check(t("abuseipdb_score") in ip_sem_local, "mas o AbuseIPDB segue la")
 
 print("\n[4] Coluna da tabela vira '-' e o veredito nao mente")
 colunas = apresentacao.colunas_hash(dados["hash"], so_apis)
-check(colunas[4] == "-", f"celula do X-Force desligado fica vazia ({colunas[4]})")
+check(colunas[-1] == "-", f"celula do JoeSandbox desligado fica vazia ({colunas[-1]})")
 check(colunas[3] != "-", "a do VirusTotal, ligada, tem placar")
 
 root = tk.Tk()
@@ -101,19 +105,18 @@ check(app.fontes_ip == catalogo.padrao("ip"),
       "comeca com o padrao marcado -- o X-Force fica de fora, exigindo login no portal")
 check(app._resumo_fontes("ip", catalogo.todas("ip")) == "",
       "com tudo ligado o resumo fica vazio, sem poluir a tela")
-resumo = app._resumo_fontes("hash", catalogo.rapidas("hash"))
-check(t("source_ibm") in resumo and t("source_joe") in resumo,
-      f"o resumo nomeia as fontes desligadas ({resumo})")
+SEM_JOE = catalogo.todas("hash") - {"joe"}
+resumo = app._resumo_fontes("hash", SEM_JOE)
+check(t("source_joe") in resumo, f"o resumo nomeia a fonte desligada ({resumo})")
 check(t("source_vt") not in resumo, "e nao cita as que continuam ligadas")
 
 print("\n[6] Aplicar no modal esconde a coluna e guarda a escolha")
-app._aplicar_fontes_hash(catalogo.rapidas("hash"))
+app._aplicar_fontes_hash(SEM_JOE)
 visiveis = app.tabela_hash.tree.cget("displaycolumns")
-check("ibm" not in visiveis and "joe" not in visiveis,
-      f"colunas das fontes de navegador sairam da tabela ({visiveis})")
+check("joe" not in visiveis, f"coluna da fonte desmarcada saiu da tabela ({visiveis})")
 check("vt" in visiveis and "alien" in visiveis, "as de API continuam visiveis")
 app._aplicar_fontes_hash(catalogo.todas("hash"))
-check("ibm" in app.tabela_hash.tree.cget("displaycolumns"),
+check("joe" in app.tabela_hash.tree.cget("displaycolumns"),
       "religar a fonte traz a coluna de volta")
 
 print("\n[7] O modal: atalhos, minimo de uma fonte e retorno da escolha")
@@ -152,7 +155,6 @@ aba_ip.check_ip_abuseipdb = espiao("abuse", ({"data": {"abuseConfidenceScore": 0
 aba_ip.check_ip_virustotal = espiao("vt", VT_IP)
 aba_ip.check_ip_metadefender = espiao("md", ({"detectados": 0, "total": 20}, core.FONTE_OK))
 aba_ip.get_location = espiao("local", ("Cidade", "Pais"))
-app._consultar_ibm = lambda consulta, alvo: (consultadas.append("ibm"), ("low", core.FONTE_OK))[1]
 bloquear_rede(core)
 
 app.fontes_ip_varredura = {"vt"}
@@ -169,8 +171,8 @@ check(data["status"] == "clean",
 del consultadas[:]
 app.fontes_ip_varredura = catalogo.todas("ip")
 app._consultar_ip(1, "8.8.8.8", 1)
-check(sorted(consultadas) == ["abuse", "ibm", "local", "md", "vt"],
-      f"com tudo marcado, todas as fontes sao consultadas ({sorted(consultadas)})")
+check(sorted(consultadas) == ["abuse", "local", "md", "vt"],
+      f"com tudo marcado, todas as fontes entram na conta ({sorted(consultadas)})")
 
 print("\n[9] O mesmo vale para hash e dominio")
 del consultadas[:]
@@ -200,7 +202,7 @@ check(not data_url["fontes_indisponiveis"] and data_url["status"] == "clean",
 print("\n[10] Na aba de dominio, a escolha desce para os IPs resolvidos")
 app.fontes_url_varredura = {"vt", "ips"}
 herdadas = app._fontes_ip_associado()
-check("md" not in herdadas and "ibm" not in herdadas,
+check("md" not in herdadas,
       f"MetaDefender e X-Force desligados nao sao consultados nos IPs ({herdadas})")
 check({"abuse", "local", "vt"} <= herdadas,
       "AbuseIPDB e IPinfo entram sempre: nao tem interruptor na aba de dominio")

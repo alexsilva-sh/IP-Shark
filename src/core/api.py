@@ -115,6 +115,7 @@ URL_VT_URL = "https://www.virustotal.com/api/v3/urls/{}"
 URL_OTX = "https://otx.alienvault.com/api/v1/indicators/{}/{}/general"
 URL_IPINFO = "https://ipinfo.io/{}/json"
 URL_MD = "https://api.metadefender.com/v4/{}/{}"
+URL_DNS_GOOGLE = "https://dns.google/resolve"
 
 # O que cada API conta sobre a propria cota: {fonte: {"restante": int, "espera": int}}.
 _cotas = {}
@@ -416,6 +417,20 @@ def check_dominio_metadefender(dominio):
     return _metadefender("domain", dominio)
 
 
+def resolver_dns(dominio, tipo="A"):
+    """Registros do dominio pelo DNS publico do Google, ou [] quando nao da.
+
+    Passa pelo `_consultar` como qualquer outra fonte: sem isso a resolucao era o unico
+    ponto do app fora da Session por thread, do retry e do teto de tempo padronizados.
+    """
+    dados, estado = _consultar(URL_DNS_GOOGLE, fonte=None,
+                               params={"name": dominio, "type": tipo})
+    if estado != FONTE_OK:
+        return []
+    return [registro.get("data") for registro in (safe_get(dados, "Answer") or [])
+            if isinstance(registro, dict)]
+
+
 def get_location(ip):
     reload_api_keys()
     dados, estado = _consultar(URL_IPINFO.format(ip), fonte="IPinfo",
@@ -441,9 +456,11 @@ def _sondas(chaves):
         ("IPINFO_API_KEY", "IPinfo", URL_IPINFO.format(IP_TESTE),
          None, {"token": chaves.get("IPINFO_API_KEY")}),
         ("ALIENVAULT_API_KEY", "AlienVault", URL_OTX.format("IPv4", IP_TESTE),
-         {"X-OTX-API-KEY": chaves.get("ALIENVAULT_API_KEY"), "Accept": "application/json"}, None),
+         {"X-OTX-API-KEY": chaves.get("ALIENVAULT_API_KEY"), "Accept": "application/json"},
+         None),
         ("METADEFENDER_API_KEY", "MetaDefender", URL_MD.format("ip", IP_TESTE),
-         {"apikey": chaves.get("METADEFENDER_API_KEY"), "Accept": "application/json"}, None),
+         {"apikey": chaves.get("METADEFENDER_API_KEY"), "Accept": "application/json"},
+         None),
     )
 
 

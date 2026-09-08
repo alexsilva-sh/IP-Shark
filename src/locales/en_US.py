@@ -5,6 +5,8 @@ STRINGS = {
     "unknown": "Unknown",
     "cancelled": "CANCELLED",
     "scan_cancelled": "Scan cancelled by user.",
+    "export_done": "Spreadsheet saved to:\n{caminho}",
+    "export_error": "Could not save the spreadsheet: {motivo}.\nIf the file is open in Excel, close it and try again.",
     "no_results": "No results available.",
     "no_records": "No records",
 
@@ -108,7 +110,6 @@ STRINGS = {
 
     # Scores
     "vt_score": "VirusTotal score",
-    "ibm_score": "IBM score",
     "alien_score": "AlienVault",
     "md_score": "MetaDefender score",
     "count_pulse": "pulse",
@@ -242,7 +243,6 @@ STRINGS = {
     "source_md": "MetaDefender",
     "source_alien": "AlienVault",
     "source_ipinfo": "IPinfo (location)",
-    "source_ibm": "IBM X-Force",
     "source_joe": "JoeSandbox",
     "source_assoc_ips": "IPs associated with the domain",
 
@@ -302,7 +302,6 @@ STRINGS = {
     "csv_verdict": "Verdict",
     "csv_abuse_score": "AbuseIPDB score",
     "csv_vt_score": "VirusTotal score",
-    "csv_ibm_score": "IBM score",
     "csv_alien_score": "AlienVault",
     "csv_md_score": "MetaDefender",
     "csv_country": "Country",
@@ -312,7 +311,6 @@ STRINGS = {
     "csv_last_analysis": "Last analysis",
     "csv_abuse_link": "AbuseIPDB link",
     "csv_vt_link": "VirusTotal link",
-    "csv_ibm_link": "IBM link",
     "csv_alien_link": "AlienVault link",
     "csv_md_link": "MetaDefender link",
     "csv_joe_link": "JoeSandbox link",
@@ -323,7 +321,6 @@ STRINGS = {
     "col_verdict": "Verdict",
     "col_abuse": "AbuseIPDB",
     "col_vt": "VirusTotal",
-    "col_ibm": "X-Force",
     "col_alien": "AlienVault",
     "col_md": "MetaDefender",
     "col_joe": "JoeSandbox",
@@ -360,10 +357,6 @@ STRINGS = {
     # Per-source state
     "source_unavailable": "lookup failed",
     "source_no_key": "API key not configured",
-    "source_no_session": "portal requires a login",
-    "xforce_session_warning": (
-        "IBM X-Force only answers users signed in to the portal, which is why it ships disabled. Clear it under “Customize search” so it stops leaving the analysis incomplete."
-    ),
     "source_quota": "API quota exhausted",
     "source_no_data": "no records",
     "sources_incomplete": "Incomplete analysis - no response from: {fontes}",
@@ -383,6 +376,7 @@ STRINGS = {
     "count_valid": "valid",
     "count_invalid": "invalid",
     "count_private": "private",
+    "count_duplicate": "duplicate",
     "skipped_items": "Skipped",
     "progress_done": "{feitos}/{total}",
     "associated_to_domain": "associated with domain",

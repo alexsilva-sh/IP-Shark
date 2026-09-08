@@ -46,8 +46,11 @@ class DialogoFontes(tk.Toplevel):
         atalhos = tk.Frame(corpo, bg=tema.FUNDO)
         atalhos.pack(fill="x", pady=(14, 0))
         Botao(atalhos, text=t("src_all"), command=self._marcar_todas).pack(side="left")
-        Botao(atalhos, text=t("src_only_fast"),
-              command=self._marcar_rapidas).pack(side="left", padx=(tema.E2, 0))
+        # Numa aba em que toda fonte e de API o atalho nao mudaria nada, e botao que nao faz
+        # nada ensina errado sobre o que ele faz nas outras abas.
+        if catalogo.rapidas(aba) != catalogo.todas(aba):
+            Botao(atalhos, text=t("src_only_fast"),
+                  command=self._marcar_rapidas).pack(side="left", padx=(tema.E2, 0))
 
         rodape = tk.Frame(corpo, bg=tema.FUNDO)
         rodape.pack(fill="x", pady=(tema.E3, 0))

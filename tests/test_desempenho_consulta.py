@@ -100,50 +100,6 @@ check(pico["maximo"] == 1,
       "numa lista de cinquenta, cada IP volta a consultar em serie")
 
 
-print("\n[4] O X-Force so e cobrado uma vez por sessao quando o portal recusa")
-consultas = []
-
-
-def _portal_pede_login(_driver, alvo):
-    consultas.append(alvo)
-    return "login"
-
-
-class PoolFalso:
-    def __init__(self):
-        self.emprestimos = 0
-
-    class _Emprestimo:
-        def __init__(self, pool):
-            self.pool = pool
-
-        def __enter__(self):
-            self.pool.emprestimos += 1
-            return object()
-
-        def __exit__(self, *_):
-            return False
-
-    def emprestar(self):
-        return self._Emprestimo(self)
-
-
-app.driver_pool = PoolFalso()
-app.xforce_pediu_login = False
-
-score, estado = app._consultar_ibm(_portal_pede_login, "8.8.8.8")
-check(estado == core.FONTE_SEM_SESSAO, "a primeira recusa vira FONTE_SEM_SESSAO")
-check(app.xforce_pediu_login, "e o disjuntor fica armado")
-
-for alvo in ("1.1.1.1", "9.9.9.9", "8.8.4.4"):
-    _score, estado = app._consultar_ibm(_portal_pede_login, alvo)
-    check(estado == core.FONTE_SEM_SESSAO, f"{alvo} continua saindo como sem sessao")
-
-check(len(consultas) == 1,
-      f"mas o portal so foi visitado uma vez ({len(consultas)}): os 18 s de espera nao se repetem")
-check(app.driver_pool.emprestimos == 1, "e o pool nao foi ocupado de novo")
-
-
 print("\n[5] O pool de navegadores so sobe quando alguem precisa dele")
 navegadores.start_browser = lambda: (_ for _ in ()).throw(
     AssertionError("navegador nao devia subir sem fonte de navegador ligada"))
@@ -163,7 +119,9 @@ check(catalogo.usa_navegador("ip", catalogo.padrao("ip")) is False,
       "a aba de IP no padrao nao precisa de navegador")
 check(catalogo.usa_navegador("hash", catalogo.padrao("hash")) is True,
       "a de hash precisa, por causa do JoeSandbox")
-check(catalogo.usa_navegador("ip", catalogo.todas("ip")) is True,
-      "e volta a precisar se o analista ligar o X-Force")
+check(catalogo.usa_navegador("ip", catalogo.todas("ip")) is False,
+      "e nem com tudo marcado: a aba de IP so tem fonte de API")
+check(catalogo.usa_navegador("hash", {"vt", "md"}) is False,
+      "so o JoeSandbox faz o pool subir")
 
 encerrar()

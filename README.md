@@ -5,16 +5,15 @@
 
 Ferramenta Python com interface gráfica para análise de reputação de IPs, hashes e domínios, integrando múltiplas fontes de inteligência de ameaças.
 
-O IP Shark combina consultas em AbuseIPDB, VirusTotal, IBM X-Force, AlienVault, MetaDefender, IPinfo e JoeSandbox, com execução paralela, exportação de resultados em Excel e geração de recomendações automáticas.
+O IP Shark combina consultas em AbuseIPDB, VirusTotal, AlienVault, MetaDefender, IPinfo e JoeSandbox, com execução paralela, exportação de resultados em Excel e geração de recomendações automáticas.
 
 ---
 
 ## 🔍 Funcionalidades Principais
 
 ### ⚙ Personalizar pesquisa
-Cada aba tem um botão **Personalizar pesquisa** que abre a escolha das fontes consultadas. Fonte desmarcada não é consultada e some do relatório, da tabela e da planilha. Ela também não deixa o resultado incompleto, então dá para tirar da conta uma base que está fora do ar sem que isso contamine o veredito. O atalho *Só as rápidas* deixa apenas as consultas por API, dispensando as que dependem de navegador (IBM X-Force e JoeSandbox). A escolha vale para a sessão e volta ao padrão ao reabrir o app.
+Cada aba tem um botão **Personalizar pesquisa** que abre a escolha das fontes consultadas. Fonte desmarcada não é consultada e some do relatório, da tabela e da planilha. Ela também não deixa o resultado incompleto, então dá para tirar da conta uma base que está fora do ar sem que isso contamine o veredito. O atalho *Só as rápidas* deixa apenas as consultas por API, dispensando a única que depende de navegador (JoeSandbox). A escolha fica guardada e volta na próxima vez que você abrir o app — o resumo ao lado do botão mostra o que ficou de fora, para nenhuma fonte sumir sem você notar.
 
-> **IBM X-Force vem desmarcado.** Desde 2026 o portal exige login com IBMid e não responde a consultas automáticas; a sessão do site também não pode ser reaproveitada, porque vive num cookie de sessão que o próprio X-Force invalida assim que ele aparece em outro navegador. Marcá-lo faz o app consultar mesmo assim, e a fonte responderá *exige login no portal* — o que deixa o veredito como análise incompleta.
 
 ### 🚦 Veredito honesto
 Cada fonte carrega o próprio estado, e o resultado diz o que aconteceu de verdade:
@@ -26,7 +25,6 @@ Cada fonte carrega o próprio estado, e o resultado diz o que aconteceu de verda
 ### ✅ Análise de IPs
 - **AbuseIPDB**: Score de abuso, data da última denúncia e detecção de whitelist.
 - **VirusTotal**: Verificação em múltiplos motores antivírus.
-- **IBM X-Force**: Score de risco (via Selenium; desmarcado por padrão, o portal exige login).
 - **MetaDefender**: Contagem de motores que acusaram o IP.
 - **IPinfo**: Localização do IP (cidade e país) com tradução automática do nome do país.
 - Execução paralela com até 10 IPs simultâneos e exibição ordenada dos resultados.
@@ -35,7 +33,6 @@ Cada fonte carrega o próprio estado, e o resultado diz o que aconteceu de verda
 
 ### 🧪 Análise de Hashes (MD5, SHA1, SHA256)
 - **VirusTotal**: Score, nome do arquivo e data da última análise.
-- **IBM X-Force**: Nível de risco do hash (desmarcado por padrão, o portal exige login).
 - **AlienVault**: Pulsos de ameaça, família de malware e grupo atribuído.
 - **MetaDefender**: Contagem de motores que acusaram o arquivo.
 - **JoeSandbox**: Veredito da execução em sandbox, taxa de AV, comportamento observado e links do laudo completo e do relatório de IOC. Só aparece no resultado quando há análise, e um veredito `Malicious` sustenta má reputação por si só.
@@ -43,7 +40,6 @@ Cada fonte carrega o próprio estado, e o resultado diz o que aconteceu de verda
 
 ### 🌐 Análise de Domínios
 - **VirusTotal**: Score de reputação do domínio.
-- **IBM X-Force**: Score do domínio (via Selenium; desmarcado por padrão, o portal exige login).
 - **AlienVault**: Pulsos relacionados, família de malware e grupo atribuído.
 - **MetaDefender**: Contagem de motores que acusaram o domínio.
 - Resolução automática de IPs associados via DNS público do Google (`dns.google/resolve`) e `socket.gethostbyname_ex()`, com análise completa de cada IP resolvido.

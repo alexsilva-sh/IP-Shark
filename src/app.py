@@ -1,23 +1,21 @@
 """Janela principal: monta as abas e guarda o que as tres compartilham."""
-import threading
 import tkinter as tk
 from datetime import datetime
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 import log
 import preferencias
 from core import api
-from core.reputacao import classificar_ibm
 from i18n import t
 from ui import fontes as fontes_catalogo
 from ui import tema
 from ui.aba_hash import AbaHash
 from ui.aba_ip import AbaIP
 from ui.aba_url import AbaURL
-from ui.navegadores import DriverIndisponivel, DriverPool
+from ui.navegadores import DriverPool
 from ui.widgets import Botao, Cartao, Chip, MultilineInput, ResultTable, RotuloSecao
 
-VERSAO = "v4.1"
+VERSAO = "v4.2"
 
 _log = log.obter("app")
 
@@ -78,9 +76,6 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         self.tab_frame.pack(fill="x", padx=tema.E2, pady=(tema.E4, 0))
 
         self.driver_pool = DriverPool(ao_degradar=self._avisar_pool_degradado)
-        # Ligado na primeira recusa do portal; ver _desligar_xforce.
-        self.xforce_pediu_login = False
-        self._lock_xforce = threading.Lock()
         self._montar_aba_ip()
         self._montar_aba_hash()
         self._montar_aba_url()
@@ -311,39 +306,48 @@ class IPCheckerApp(AbaIP, AbaHash, AbaURL):
         self.banner_label.config(text=f"⚠ {texto}")
         self.banner.pack(fill="x", padx=tema.E4, pady=(tema.E2, 0), after=self.barra_topo)
 
-    def _consultar_ibm(self, consulta, indicador):
-        """(score, estado) do X-Force. Pool vazio vira fonte indisponivel em vez de travar.
+    def guardar_escolha_de_fontes(self, aba, escolhidas):
+        """Leva a escolha para o disco, para o analista nao remarcar tudo a cada abertura.
 
-        Pagina ilegivel e retentada como nas fontes HTTP; falta de navegador nao, que o
-        emprestimo ja espera a sua vez por conta propria.
+        O que fica salvo e so o nome das fontes -- nunca indicador nem chave.
         """
-        if self.xforce_pediu_login:
-            return None, api.FONTE_SEM_SESSAO
-        for _ in api.tentativas():
-            try:
-                with self.driver_pool.emprestar() as driver:
-                    score = consulta(driver, indicador)
-            except DriverIndisponivel:
-                return None, api.FONTE_INDISPONIVEL
-            estado = classificar_ibm(score)
-            if estado != api.FONTE_INDISPONIVEL or self.stop_flag:
-                break
-        if estado == api.FONTE_SEM_SESSAO:
-            self._desligar_xforce()
-        return (t("unknown") if estado == api.FONTE_SEM_DADOS else score), estado
+        salvas = preferencias.carregar().get("fontes") or {}
+        salvas[aba] = sorted(escolhidas)
+        preferencias.salvar(fontes=salvas)
 
-    def _desligar_xforce(self):
-        """Primeira recusa do portal encerra as consultas ao X-Force por esta sessao.
+    def exportar_planilha(self, salvar, **argumentos):
+        """Grava a planilha e responde ao analista -- inclusive quando falha.
 
-        Descobrir de novo custa caro: cada indicador espera os 18 s do carregamento da pagina
-        para reencontrar a mesma tela de IBMid, e numa lista de cinquenta IPs isso e o
-        grosso da varredura. O estado devolvido nao muda -- so deixa de ser pago.
+        Sem isto, `.xlsx` aberto no Excel virava PermissionError num callback do Tk, que num
+        executavel sem console nao aparece em lugar nenhum: o botao parecia nao fazer nada.
         """
-        with self._lock_xforce:
-            primeira_recusa = not self.xforce_pediu_login
-            self.xforce_pediu_login = True
-        if primeira_recusa:
-            self._ui(self.mostrar_aviso, t("xforce_session_warning"))
+        try:
+            caminho = salvar(parent=self.root, **argumentos)
+        except OSError as erro:
+            _log.warning("falha ao gravar a planilha: %s", type(erro).__name__)
+            messagebox.showerror(t("error"), t("export_error").format(
+                motivo=getattr(erro, "strerror", None) or type(erro).__name__))
+            return None
+        if caminho:      # None = o analista desistiu no seletor de pasta
+            messagebox.showinfo(t("done"), t("export_done").format(caminho=caminho))
+        return caminho
+
+    def exportar_planilha(self, salvar, **argumentos):
+        """Grava a planilha e responde ao analista -- inclusive quando falha.
+
+        Sem isto, `.xlsx` aberto no Excel virava PermissionError num callback do Tk, que num
+        executavel sem console nao aparece em lugar nenhum: o botao parecia nao fazer nada.
+        """
+        try:
+            caminho = salvar(parent=self.root, **argumentos)
+        except OSError as erro:
+            _log.warning("falha ao gravar a planilha: %s", type(erro).__name__)
+            messagebox.showerror(t("error"), t("export_error").format(
+                motivo=getattr(erro, "strerror", None) or type(erro).__name__))
+            return None
+        if caminho:      # None = o analista desistiu no seletor de pasta
+            messagebox.showinfo(t("done"), t("export_done").format(caminho=caminho))
+        return caminho
 
     # ---------- interface ----------
 

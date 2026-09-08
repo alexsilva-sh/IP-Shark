@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 import pyperclip
 
 import log
+import preferencias
 from core import api
 from core.api import (
     check_ip_abuseipdb,
@@ -15,7 +16,6 @@ from core.api import (
     check_ip_virustotal,
     get_location,
 )
-from core.navegador import check_ip_ibm
 from core.reputacao import build_ip_result, get_domain_from_abuseipdb, is_valid_ip
 from i18n import plural, t
 from services.exportacao import salvar_planilha
@@ -28,8 +28,10 @@ from ui.apresentacao import (
     contar_ips,
     dividir_entrada,
     fontes_em_cota,
+    ip_canonico,
     linha_planilha_ip,
     relatorio_ip,
+    sem_repetidos,
 )
 from ui.dialogo_fontes import DialogoFontes
 from ui.widgets import Botao, Chip
@@ -39,10 +41,11 @@ _log = log.obter("aba_ip")
 
 class AbaIP:
     """Mixin de IPCheckerApp. Usa a infraestrutura compartilhada da janela principal:
-    _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
+    _ui, _track_processing, exportar_planilha, _update_action_buttons e stop_flag."""
 
     def _montar_aba_ip(self):
-        self.fontes_ip = fontes_catalogo.padrao("ip")
+        self.fontes_ip = fontes_catalogo.escolha_salva(
+            "ip", preferencias.carregar().get("fontes"))
         self.fontes_ip_varredura = set(self.fontes_ip)
         # Recalculado a cada varredura, a partir do tamanho da lista.
         self.largura_fontes_ip = api.largura_por_indicador(1)
@@ -100,7 +103,6 @@ class AbaIP:
             ("veredito", "col_verdict", 175, "w"),
             ("abuse", "col_abuse", 95, "center"),
             ("vt", "col_vt", 95, "center"),
-            ("ibm", "col_ibm", 85, "center"),
             ("md", "col_md", 120, "center"),
             ("dominio", "col_domain", 190, "w"),
             ("pais", "col_country", 170, "w"),
@@ -127,6 +129,7 @@ class AbaIP:
 
     def _aplicar_fontes_ip(self, escolhidas):
         self.fontes_ip = escolhidas
+        self.guardar_escolha_de_fontes("ip", escolhidas)
         self.resumo_fontes_ip.config(text=self._resumo_fontes("ip", escolhidas))
         self.tabela_ip.ocultar_colunas(fontes_catalogo.colunas_ocultas("ip", escolhidas))
 
@@ -153,7 +156,10 @@ class AbaIP:
             elif ipaddress.ip_address(ip).is_private:
                 ignorados.append(f"{ip} ({t('private_ip')})")
             else:
-                ips.append(ip)
+                ips.append(ip_canonico(ip))
+        # Repetido nao vira linha nova nem gasta cota de novo; o contador da entrada avisa
+        # quantos sairam.
+        ips = sem_repetidos(ips)
         if not ips:
             messagebox.showerror(t("error"), t("no_valid_public_ip"))
             return
@@ -241,9 +247,8 @@ class AbaIP:
         md, estado_md = respostas.get("md", (None, None))
         city, country = respostas.get("local", ("-", "-"))
         domain = get_domain_from_abuseipdb(abuseipdb_result)
+        # O X-Force saiu do catalogo; o nucleo segue aceitando o placar por compatibilidade.
         ibm_score, estado_ibm = None, None
-        if "ibm" in fontes and not self.stop_flag:
-            ibm_score, estado_ibm = self._consultar_ibm(lambda d, alvo: check_ip_ibm(d, alvo)[1], ip)
         if self.stop_flag:
             return None
         data = build_ip_result(
@@ -346,6 +351,6 @@ class AbaIP:
             messagebox.showwarning(t("done"), t("no_results"))
             return
         headers = cabecalho_planilha_ip(self.fontes_ip_varredura)
-        salvar_planilha(self.results_ip, headers, filename="ip_results.xlsx",
-                        parent=self.root, titulo=t("select_folder"), coluna_veredito=2,
-                        aba=t("csv_sheet_results"))
+        self.exportar_planilha(salvar_planilha, results=self.results_ip, headers=headers,
+                               filename="ip_results.xlsx", titulo=t("select_folder"),
+                               coluna_veredito=2, aba=t("csv_sheet_results"))

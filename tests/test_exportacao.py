@@ -19,7 +19,6 @@ from ui import fontes as catalogo
 
 # O que o modal de "Personalizar pesquisa" entrega: conjunto de fontes ativas por aba.
 TODAS = {aba: catalogo.todas(aba) for aba in ("ip", "hash", "url")}
-SEM_IBM = {aba: fontes - {"ibm"} for aba, fontes in TODAS.items()}
 
 saida = tempfile.mkdtemp(prefix="ipshark-testes-")
 exportacao.escolher_diretorio = lambda parent=None, titulo=None: saida
@@ -44,14 +43,12 @@ headers = [t("csv_ip"), t("csv_verdict"), t("csv_abuse_score"), t("csv_vt_score"
            t("csv_md_score"),
            t("csv_domain"), t("csv_country"), t("csv_city"), t("csv_last_report"),
            t("csv_abuse_link"), t("csv_vt_link"), t("csv_md_link")]
-linhas = [apresentacao.linha_planilha_ip(d, SEM_IBM["ip"])
+linhas = [apresentacao.linha_planilha_ip(d, TODAS["ip"])
           for d in (limpo, malicioso, revisar, incompleto)]
 check(all(len(linha) == len(headers) for linha in linhas),
       f"cada linha bate com o cabecalho ({len(linhas[0])} x {len(headers)})")
-check(apresentacao.cabecalho_planilha_ip(SEM_IBM["ip"]) == headers,
+check(apresentacao.cabecalho_planilha_ip(TODAS["ip"]) == headers,
       "cabecalho gerado sai na ordem esperada, sem o X-Force desligado")
-check(t("csv_ibm_score") in apresentacao.cabecalho_planilha_ip(TODAS["ip"]),
-      "e com o X-Force ligado a coluna volta")
 
 caminho = exportacao.salvar_planilha(linhas, headers, filename="ip.xlsx", coluna_veredito=2)
 ws = load_workbook(caminho).active
@@ -89,9 +86,9 @@ h_headers = [t("csv_hash"), t("csv_verdict"), t("csv_vt_score"), t("csv_alien_sc
              t("csv_joe_verdict"), t("csv_joe_class"), t("csv_joe_behavior"),
              t("csv_file_name"), t("csv_last_analysis"), t("csv_vt_link"),
              t("csv_alien_link"), t("csv_md_link"), t("csv_joe_link")]
-h_linha = apresentacao.linha_planilha_hash(d_hash, SEM_IBM["hash"])
+h_linha = apresentacao.linha_planilha_hash(d_hash, TODAS["hash"])
 check(len(h_linha) == len(h_headers), f"linha de hash bate com o cabecalho ({len(h_linha)})")
-check(apresentacao.cabecalho_planilha_hash(SEM_IBM["hash"]) == h_headers,
+check(apresentacao.cabecalho_planilha_hash(TODAS["hash"]) == h_headers,
       "cabecalho de hash gerado bate com o esperado")
 caminho = exportacao.salvar_planilha([h_linha], h_headers, filename="hash.xlsx",
                                      coluna_veredito=2)
@@ -101,15 +98,15 @@ check(ws3.cell(2, 2).value == t("verdict_bad"), "veredito do hash na planilha")
 d_url = reputacao.build_url_result("exemplo.com", 4, "-", OTX_ZERO)
 u_headers = [t("csv_domain"), t("csv_verdict"), t("csv_vt_score"), t("csv_alien_score"),
              t("csv_md_score"), t("csv_vt_link"), t("csv_alien_link"), t("csv_md_link")]
-u_linha = apresentacao.linha_planilha_url(d_url, SEM_IBM["url"])
+u_linha = apresentacao.linha_planilha_url(d_url, TODAS["url"])
 check(len(u_linha) == len(u_headers), f"linha de dominio bate com o cabecalho ({len(u_linha)})")
-check(apresentacao.cabecalho_planilha_url(SEM_IBM["url"]) == u_headers,
+check(apresentacao.cabecalho_planilha_url(TODAS["url"]) == u_headers,
       "cabecalho de dominio gerado bate com o esperado")
 
 print("\n[5] A aba de IPs associados de cada dominio tambem leva o veredito")
 caminho = exportacao.salvar_planilha_dominios(
     domain_results=[u_linha], domain_headers=u_headers,
-    ip_results_by_domain={"exemplo.com": [apresentacao.linha_planilha_ip(malicioso, SEM_IBM["ip"])]},
+    ip_results_by_domain={"exemplo.com": [apresentacao.linha_planilha_ip(malicioso, TODAS["ip"])]},
     ip_headers=headers, filename="dominios.xlsx", coluna_veredito=2)
 wb = load_workbook(caminho)
 check(wb["Dominios"].cell(2, 2).value == t("verdict_bad"), "veredito do dominio")
@@ -124,13 +121,13 @@ MD_OK = {"detectados": 3, "total": 20}
 com_md = (
     ("IP", apresentacao.linha_planilha_ip(
         ip("9.8.7.6", ABUSE_RUIM, VT_RUIM, estado_ibm=None, md=MD_OK,
-           estado_md=core.FONTE_OK), SEM_IBM["ip"]), headers),
+           estado_md=core.FONTE_OK), TODAS["ip"]), headers),
     ("hash", apresentacao.linha_planilha_hash(
         reputacao.build_hash_result("a" * 32, VT_HASH, "-", OTX_ZERO, md=MD_OK,
-                                    estado_md=core.FONTE_OK), SEM_IBM["hash"]), h_headers),
+                                    estado_md=core.FONTE_OK), TODAS["hash"]), h_headers),
     ("dominio", apresentacao.linha_planilha_url(
         reputacao.build_url_result("exemplo.com", 4, "-", OTX_ZERO, md=MD_OK,
-                                   estado_md=core.FONTE_OK), SEM_IBM["url"]), u_headers),
+                                   estado_md=core.FONTE_OK), TODAS["url"]), u_headers),
 )
 for nome, linha, cabecalho in com_md:
     coluna = cabecalho.index(t("csv_md_link"))
@@ -139,7 +136,7 @@ for nome, linha, cabecalho in com_md:
     placar = cabecalho.index(t("csv_md_score"))
     check(linha[placar] == "3/20", f"e o placar do multiscanning ({linha[placar]!r})")
 
-sem_md = apresentacao.linha_planilha_hash(d_hash, SEM_IBM["hash"])
+sem_md = apresentacao.linha_planilha_hash(d_hash, TODAS["hash"])
 check(sem_md[h_headers.index(t("csv_md_link"))] == "" and len(sem_md) == len(h_headers),
       "fonte nao consultada deixa a celula vazia, sem desalinhar a planilha")
 
@@ -167,7 +164,7 @@ check(load_workbook(caminho).sheetnames == ["Results"],
 
 caminho = exportacao.salvar_planilha_dominios(
     domain_results=[u_linha], domain_headers=u_headers,
-    ip_results_by_domain={"exemplo.com": [apresentacao.linha_planilha_ip(malicioso, SEM_IBM["ip"])]},
+    ip_results_by_domain={"exemplo.com": [apresentacao.linha_planilha_ip(malicioso, TODAS["ip"])]},
     ip_headers=headers, filename="dominios_traduzida.xlsx", coluna_veredito=2,
     aba="Domains", prefixo_aba_ips="IPs - ")
 check(load_workbook(caminho).sheetnames == ["Domains", "IPs - exemplo.com"],
@@ -178,8 +175,8 @@ check(load_workbook(caminho).sheetnames == ["Domains", "IPs - exemplo.com"],
 longo = "um-subdominio-bem-comprido.exemplo.com.br"
 caminho = exportacao.salvar_planilha_dominios(
     domain_results=[u_linha], domain_headers=u_headers,
-    ip_results_by_domain={longo: [apresentacao.linha_planilha_ip(malicioso, SEM_IBM["ip"])],
-                          "outro.com:8080": [apresentacao.linha_planilha_ip(limpo, SEM_IBM["ip"])]},
+    ip_results_by_domain={longo: [apresentacao.linha_planilha_ip(malicioso, TODAS["ip"])],
+                          "outro.com:8080": [apresentacao.linha_planilha_ip(limpo, TODAS["ip"])]},
     ip_headers=headers, filename="abas_longas.xlsx", coluna_veredito=2,
     prefixo_aba_ips="Planilha de IPs - ")
 abas = load_workbook(caminho).sheetnames

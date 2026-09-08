@@ -6,9 +6,9 @@ from threading import Thread
 from tkinter import messagebox, ttk
 
 import pyperclip
-import requests
 
 import log
+import preferencias
 from core import api
 from core.api import (
     check_dominio_metadefender,
@@ -19,7 +19,6 @@ from core.api import (
     check_url_virustotal,
     get_location,
 )
-from core.navegador import check_ip_ibm, check_url_ibm
 from core.reputacao import (
     build_ip_result,
     build_url_result,
@@ -44,6 +43,7 @@ from ui.apresentacao import (
     linha_planilha_url,
     relatorio_ip,
     relatorio_url,
+    sem_repetidos,
 )
 from ui.dialogo_fontes import DialogoFontes
 from ui.widgets import Botao, Chip
@@ -59,32 +59,36 @@ def _ip_publico(ip):
 
 
 def resolver_via_google_dns(dominio):
-    """Usa o serviço público https://dns.google/resolve.
-    Retorna lista de IPs v4/v6 públicos ou [] em erro."""
-    try:
-        resposta = requests.get(f"https://dns.google/resolve?name={dominio}&type=A", timeout=5)
-        return [registro.get("data") for registro in resposta.json().get("Answer", [])
-                if _ip_publico(registro.get("data"))]
-    except Exception as e:
-        _log.debug("resolucao por DNS do Google falhou: %s", type(e).__name__)
-        return []
+    """IPs publicos do dominio pelo DNS do Google, ou [] em erro."""
+    return [ip for ip in api.resolver_dns(dominio) if _ip_publico(ip)]
+
+
+# `gethostbyname_ex` nao aceita teto de tempo: um resolvedor lento prendia a thread da
+# varredura, e o Cancelar so e lido entre consultas. O teto global do socket vale para a
+# thread inteira, entao e posto e retirado em volta da chamada.
+ESPERA_DNS_SOCKET = 5
 
 
 def resolver_via_socket(dominio):
+    anterior = socket.getdefaulttimeout()
     try:
+        socket.setdefaulttimeout(ESPERA_DNS_SOCKET)
         _nome, _apelidos, ips = socket.gethostbyname_ex(dominio)
         return [ip for ip in ips if _ip_publico(ip)]
     except Exception as e:
         _log.debug("resolucao por socket falhou: %s", type(e).__name__)
         return []
+    finally:
+        socket.setdefaulttimeout(anterior)
 
 
 class AbaURL:
     """Mixin de IPCheckerApp. Usa a infraestrutura compartilhada da janela principal:
-    _ui, _track_processing, _consultar_ibm, _update_action_buttons e stop_flag."""
+    _ui, _track_processing, exportar_planilha, _update_action_buttons e stop_flag."""
 
     def _montar_aba_url(self):
-        self.fontes_url = fontes_catalogo.padrao("url")
+        self.fontes_url = fontes_catalogo.escolha_salva(
+            "url", preferencias.carregar().get("fontes"))
         self.fontes_url_varredura = set(self.fontes_url)
         self.results_url = []
         self.scanning_url = False
@@ -141,7 +145,6 @@ class AbaURL:
             ("veredito", "col_verdict", 175, "w"),
             ("abuse", "col_abuse", 95, "center"),
             ("vt", "col_vt", 95, "center"),
-            ("ibm", "col_ibm", 85, "center"),
             ("alien", "col_alien", 110, "center"),
             ("md", "col_md", 120, "center"),
         ])
@@ -167,6 +170,7 @@ class AbaURL:
 
     def _aplicar_fontes_url(self, escolhidas):
         self.fontes_url = escolhidas
+        self.guardar_escolha_de_fontes("url", escolhidas)
         self.resumo_fontes_url.config(text=self._resumo_fontes("url", escolhidas))
         self.tabela_url.ocultar_colunas(fontes_catalogo.colunas_ocultas("url", escolhidas))
 
@@ -194,9 +198,12 @@ class AbaURL:
         for bruto in bruto_list:
             dominio = extrair_dominio(bruto)
             if dominio_valido(dominio):
-                url_list.append(dominio)
+                url_list.append(dominio.lower())
             else:
                 ignorados.append(f"{bruto} ({t('invalid_domain')})")
+        # Depois de normalizar: 'https://x.com/a' e 'x.com' sao o mesmo dominio e uma
+        # consulta so.
+        url_list = sem_repetidos(url_list)
         if not url_list:
             messagebox.showerror(t("error"), t("no_valid_domain"))
             return
@@ -269,8 +276,6 @@ class AbaURL:
         if self.stop_flag:
             return None
         ibm_score, estado_ibm = "-", None
-        if "ibm" in fontes and not self.stop_flag:
-            ibm_score, estado_ibm = self._consultar_ibm(check_url_ibm, url)
         if self.stop_flag:
             return None
         return build_url_result(url, vt_score, ibm_score, alien,
@@ -327,9 +332,6 @@ class AbaURL:
             md, estado_md = respostas.get("md", (None, None))
             assoc_domain = get_domain_from_abuseipdb(abuseipdb_result)
             ibm_score, estado_ibm = None, None
-            if "ibm" in fontes:
-                ibm_score, estado_ibm = self._consultar_ibm(
-                    lambda d, alvo: check_ip_ibm(d, alvo)[1], ip)
             data = build_ip_result(
                 ip=ip,
                 abuseipdb_result=abuseipdb_result,
@@ -419,13 +421,13 @@ class AbaURL:
             return
         domain_headers = cabecalho_planilha_url(self.fontes_url_varredura)
         ip_headers = cabecalho_planilha_ip(self._fontes_ip_associado())
-        salvar_planilha_dominios(
+        self.exportar_planilha(
+            salvar_planilha_dominios,
             domain_results=self.results_url,
             domain_headers=domain_headers,
             ip_results_by_domain=self.ip_results_by_domain,
             ip_headers=ip_headers,
             filename="domain_results.xlsx",
-            parent=self.root,
             titulo=t("select_folder"),
             coluna_veredito=2,
             aba=t("csv_sheet_domains"),

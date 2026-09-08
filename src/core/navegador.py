@@ -1,4 +1,8 @@
-"""Consultas que dependem de navegador: IBM X-Force e JoeSandbox."""
+"""Consultas que dependem de navegador: hoje so o JoeSandbox.
+
+O IBM X-Force saiu daqui quando a IBM fechou o portal atras de login: a sessao do site nao
+pode ser reaproveitada, e o que restou foi a API, em `core/api.py`.
+"""
 import re
 import subprocess
 import time
@@ -21,11 +25,6 @@ import log
 _log = log.obter("navegador")
 
 ESPERA_PAGINA = 18
-
-# Freio de ritmo, nao espera de pagina -- disso o WebDriverWait ja cuida. O tamanho=3 do
-# DriverPool foi calibrado para nao disparar o bloqueio do X-Force quando cada consulta
-# prendia o driver por 8 s; medir a taxa de bloqueio antes de baixar este piso.
-PISO_XFORCE_IP = 2.0
 
 JOE_BASE = "https://www.joesandbox.com"
 
@@ -60,105 +59,6 @@ def _abrir_aba(driver, url):
 def _fechar_aba(driver):
     driver.close()
     driver.switch_to.window(driver.window_handles[0])
-
-
-# O portal do X-Force passou a exigir IBMid, e a tela de login nao devolve erro nem 403: ela
-# so troca o conteudo da pagina. Sem estas marcas, o portal fechado sairia como "pagina
-# ilegivel", que e retentada tres vezes e culpa a rede por algo que nenhuma retentativa
-# resolve. A sessao do portal nao da para reaproveitar: ela vive num cookie de sessao que o
-# X-Force invalida assim que ele aparece noutro navegador.
-_MARCAS_LOGIN = ("create ibmid", "agree to the terms of service", "login.ibm.com")
-
-
-def _exige_login(driver):
-    try:
-        return any(marca in driver.page_source.lower() for marca in _MARCAS_LOGIN)
-    except Exception:
-        return False
-
-
-def check_ip_ibm(driver, ip):
-    """Placar do X-Force para um IP.
-
-    Leitura que falha devolve "error", nunca "unknown": "unknown" vira FONTE_SEM_DADOS,
-    que nao entra em fontes_indisponiveis e deixaria a pagina lenta sair como IP limpo.
-    """
-    inicio = time.monotonic()
-    _abrir_aba(driver, f"https://exchange.xforce.ibmcloud.com/ip/{ip}")
-    try:
-        WebDriverWait(driver, ESPERA_PAGINA).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "h1.risklevelbar")))
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        h1 = soup.find("h1", class_="risklevelbar")
-        score_span = h1.find("span", class_="numtitle") if h1 else None
-        if score_span:
-            risk_score = float(score_span.text.strip())
-        else:
-            risk_class = h1.get("class", []) if h1 else []
-            if "high" in risk_class:
-                risk_score = "high"
-            elif "medium" in risk_class:
-                risk_score = "medium"
-            elif "low" in risk_class:
-                risk_score = "low"
-            else:
-                risk_score = "error"
-    except Exception as e:
-        if _exige_login(driver):
-            risk_score = "login"
-        else:
-            _log.warning("X-Force de IP nao rendeu placar legivel: %s", type(e).__name__)
-            risk_score = "error"
-    restante = PISO_XFORCE_IP - (time.monotonic() - inicio)
-    if restante > 0:
-        time.sleep(restante)
-    _fechar_aba(driver)
-    return ip, risk_score
-
-
-def check_hash_ibm(driver, hash_str):
-    _abrir_aba(driver, f"https://exchange.xforce.ibmcloud.com/malware/{hash_str}")
-    try:
-        WebDriverWait(driver, ESPERA_PAGINA).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".risklevelbar")))
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        risk_element = soup.find(class_="risklevelbar")
-        risk_class = risk_element.get("class", []) if risk_element else []
-        if "high" in risk_class:
-            score = "high"
-        elif "medium" in risk_class:
-            score = "medium"
-        elif "low" in risk_class:
-            score = "low"
-        else:
-            score = "unknown"
-    except Exception as e:
-        if _exige_login(driver):
-            score = "login"
-        else:
-            _log.warning("X-Force de hash nao rendeu placar legivel: %s", type(e).__name__)
-            score = "error"
-    _fechar_aba(driver)
-    return hash_str, score
-
-
-def check_url_ibm(driver, url):
-    ibm_url = f"https://exchange.xforce.ibmcloud.com/url/{url}"
-    if len(driver.window_handles) > 1:
-        _fechar_aba(driver)
-    driver.get(ibm_url)
-    try:
-        WebDriverWait(driver, ESPERA_PAGINA).until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "h2.scorebackgroundfilter.numtitle")))
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        elem = soup.find("h2", class_="scorebackgroundfilter numtitle")
-        return elem.text.strip() if elem else "unknown"
-    except Exception as e:
-        if _exige_login(driver):
-            return "login"
-        _log.warning("X-Force de dominio nao rendeu placar legivel: %s", type(e).__name__)
-        return "error"
 
 
 def _joe_icones(linha, sufixo):

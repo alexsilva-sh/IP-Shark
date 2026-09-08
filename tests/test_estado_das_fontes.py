@@ -20,7 +20,6 @@ from ui import apresentacao, tema
 from ui import fontes as catalogo
 
 TODAS = {aba: catalogo.todas(aba) for aba in ("ip", "hash", "url")}
-SEM_IBM = {aba: fontes - {"ibm"} for aba, fontes in TODAS.items()}
 
 gui.IPCheckerApp._init_drivers_async = lambda self, count=3: None
 
@@ -209,15 +208,6 @@ check(reputacao.build_ip_result("1.1.1.1", wl, VT_RUIM, None, "c", "p", "d")["st
 check(reputacao.build_ip_result("1.1.1.1", wl, VT_LIMPO, None, "c", "p", "d")["status"] == "whitelisted",
       "whitelist com tudo respondendo -> whitelisted")
 
-print("\n[6] IBM: 'error' e indisponivel, 'unknown' e sem dados")
-check(reputacao.classificar_ibm("error") == core.FONTE_INDISPONIVEL, "error -> indisponivel")
-check(reputacao.classificar_ibm("unknown") == core.FONTE_SEM_DADOS, "unknown -> sem dados")
-check(reputacao.classificar_ibm("1.0") == core.FONTE_OK, "score -> ok")
-check(reputacao.classificar_ibm(None) is None, "None -> fonte nao consultada")
-ibm_fora = reputacao.build_ip_result("1.1.1.1", ABUSE_LIMPO, VT_LIMPO, "error", "c", "p", "d",
-                                estado_ibm=core.FONTE_INDISPONIVEL)
-check(ibm_fora["status"] == "incompleto", "X-Force fora do ar -> incompleto")
-
 print("\n[6b] Hash e dominio seguem a mesma regra, no mesmo lugar")
 VT_HASH_LIMPO = {"data": {"attributes": {"last_analysis_stats": {"malicious": 0},
                                          "meaningful_name": "nota.txt",
@@ -255,9 +245,9 @@ check(h_sem_registro["estados"]["vt"] == core.FONTE_SEM_DADOS,
       "200 sem atributos -> sem dados")
 check(h_sem_registro["status"] == "sem_registros",
       "nenhuma base conhece o hash -> 'Sem registros', NAO 'Limpo'")
-check(apresentacao.colunas_hash(h_sem_registro, SEM_IBM["hash"])[1] == t("verdict_no_records"),
+check(apresentacao.colunas_hash(h_sem_registro, TODAS["hash"])[1] == t("verdict_no_records"),
       "a coluna de veredito diz o mesmo que o cabecalho do relatorio")
-check(t("no_records") in apresentacao.relatorio_hash(h_sem_registro, SEM_IBM["hash"]).splitlines()[0],
+check(t("no_records") in apresentacao.relatorio_hash(h_sem_registro, TODAS["hash"]).splitlines()[0],
       "e o relatorio nao afirma que o arquivo e legitimo")
 check(apresentacao.VERDICT_TAGS["sem_registros"] != apresentacao.VERDICT_TAGS["clean"],
       "na tabela nao sai em verde de limpo")
@@ -298,58 +288,6 @@ u_fora = reputacao.build_url_result("exemplo.com", None, "-", None,
                                     estado_vt=core.FONTE_COTA, estado_alien=core.FONTE_COTA)
 check(u_fora["status"] == "incompleto", "dominio com cota estourada -> incompleto, NAO clean")
 check(u_fora["fontes_indisponiveis"] == ["VirusTotal", "AlienVault"], "aponta quais fontes faltaram")
-
-print("\n[6c] X-Force de IP: pagina que nao renderiza vira incompleto, nao 'limpo'")
-navegador.ESPERA_PAGINA = 0.3   # 18 em producao
-navegador.PISO_XFORCE_IP = 0    # 2.0 em producao
-
-
-class DriverFake:
-    """So o que check_ip_ibm toca do driver. Nenhum Chrome e iniciado."""
-
-    def __init__(self, html, renderiza=True):
-        self.page_source = html
-        self._renderiza = renderiza
-        self.window_handles = ["principal", "aba"]
-        self.switch_to = SimpleNamespace(window=lambda _h: None)
-
-    def execute_script(self, *_a):
-        pass
-
-    def find_element(self, _by, valor):
-        if not self._renderiza:
-            raise NoSuchElementException(valor)
-        return object()
-
-    def close(self):
-        self.window_handles = ["principal"]
-
-
-PLACAR = '<h1 class="risklevelbar high"><span class="numtitle">8.5</span></h1>'
-
-_ip, nota = navegador.check_ip_ibm(DriverFake(PLACAR), "1.1.1.1")
-check(nota == 8.5, "placar renderizado e lido como nota numerica")
-
-inicio = time.monotonic()
-_ip, lenta = navegador.check_ip_ibm(DriverFake("<body>carregando</body>", renderiza=False),
-                                    "1.1.1.1")
-decorrido = time.monotonic() - inicio
-check(lenta == "error", "pagina que nao renderiza no prazo -> 'error', NAO 'unknown'")
-check(reputacao.classificar_ibm(lenta) == core.FONTE_INDISPONIVEL,
-      "'error' entra em ESTADOS_SEM_RESPOSTA e bloqueia a conclusao")
-lenta_result = reputacao.build_ip_result("1.1.1.1", ABUSE_LIMPO, VT_LIMPO, lenta, "c", "p", "d",
-                                         estado_ibm=reputacao.classificar_ibm(lenta))
-check(lenta_result["status"] == "incompleto",
-      "X-Force lento com as demais fontes limpas -> incompleto, NAO clean")
-check(decorrido < 2, f"espera e por evento, nao sleep cego ({decorrido:.1f}s)")
-
-_ip, ilegivel = navegador.check_ip_ibm(DriverFake(
-    '<h1 class="risklevelbar"><span class="numtitle">--</span></h1>'), "1.1.1.1")
-check(ilegivel == "error", "placar presente mas ilegivel -> 'error', nao nota inventada")
-
-_ip, por_classe = navegador.check_ip_ibm(DriverFake('<h1 class="risklevelbar high"></h1>'),
-                                         "1.1.1.1")
-check(por_classe == "high", "sem numero, a classe de risco ainda e lida")
 
 print("\n[6d] Dominio digitado passa pelo mesmo rigor do IP e do hash")
 for bruto, esperado in [
@@ -560,52 +498,53 @@ app.bad_ips = set()
 app.mss_var_ip.set(False)
 
 print("\n[11] Exportacao tambem nao mente")
-linha = apresentacao.linha_planilha_ip(abuse_fora, SEM_IBM["ip"])
+linha = apresentacao.linha_planilha_ip(abuse_fora, TODAS["ip"])
 check(t("source_unavailable") in linha, "planilha registra a falha da fonte")
 check("0%" not in linha, "planilha nao grava 0% inventado")
-linha_hash = apresentacao.linha_planilha_hash(h_vt_fora, SEM_IBM["hash"])
+linha_hash = apresentacao.linha_planilha_hash(h_vt_fora, TODAS["hash"])
 check(t("source_unavailable") in linha_hash, "planilha de hash registra a falha da fonte")
-check(len(linha_hash) == len(apresentacao.linha_planilha_hash(h_vt_fora, TODAS["hash"])) - 2,
-      "coluna e link do X-Force somem juntos quando a fonte esta desligada")
-linha_url = apresentacao.linha_planilha_url(u_fora, SEM_IBM["url"])
+sem_md = TODAS["hash"] - {"md"}
+check(len(apresentacao.linha_planilha_hash(h_vt_fora, sem_md)) == len(linha_hash) - 2,
+      "placar e link da fonte desligada somem juntos da planilha")
+linha_url = apresentacao.linha_planilha_url(u_fora, TODAS["url"])
 check(t("source_quota") in linha_url, "planilha de dominio registra a cota estourada")
 check("0" not in linha_url[1], "planilha de dominio nao grava 0 inventado")
 
 print("\n[12] A tela de hash e dominio tambem nao mente")
-texto_hash = apresentacao.relatorio_hash(h_vt_fora, SEM_IBM["hash"])
+texto_hash = apresentacao.relatorio_hash(h_vt_fora, TODAS["hash"])
 check(t("source_unavailable") in texto_hash, "detalhe do hash diz 'falha na consulta'")
-check(apresentacao.colunas_hash(h_vt_fora, SEM_IBM["hash"])[1] == t("verdict_incomplete"),
+check(apresentacao.colunas_hash(h_vt_fora, TODAS["hash"])[1] == t("verdict_incomplete"),
       "veredito da linha de hash e incompleto")
-check(apresentacao.colunas_hash(h_limpo, SEM_IBM["hash"])[2] == "nota.txt",
+check(apresentacao.colunas_hash(h_limpo, TODAS["hash"])[2] == "nota.txt",
       "coluna de arquivo traz o nome do VirusTotal, logo depois do veredito")
-check(apresentacao.colunas_hash(h_vt_fora, SEM_IBM["hash"])[2] == "-",
+check(apresentacao.colunas_hash(h_vt_fora, TODAS["hash"])[2] == "-",
       "sem resposta do VirusTotal, a coluna de arquivo fica vazia")
-check(apresentacao.colunas_hash(h_limpo, SEM_IBM["hash"])[-1] != "nota.txt",
+check(apresentacao.colunas_hash(h_limpo, TODAS["hash"])[-1] != "nota.txt",
       "o arquivo saiu do fim da linha, onde era o primeiro a sair da tela")
-check(apresentacao.colunas_url(u_fora, SEM_IBM["url"])[1] == t("verdict_incomplete"),
+check(apresentacao.colunas_url(u_fora, TODAS["url"])[1] == t("verdict_incomplete"),
       "veredito da linha de dominio e incompleto")
 
 print("\n[13] A tabela de IP mostra o dominio, que so vivia no relatorio")
 ip_com_dominio = reputacao.build_ip_result(
     "9.9.9.9", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "dns9.quad9.net",
     estado_abuse=core.FONTE_OK, estado_vt=core.FONTE_OK, estado_ibm=None)
-colunas = apresentacao.colunas_ip(ip_com_dominio, "p", SEM_IBM["ip"])
+colunas = apresentacao.colunas_ip(ip_com_dominio, "p", TODAS["ip"])
 check("dns9.quad9.net" in colunas, f"o nome de dominio chega a tabela ({colunas})")
 check(colunas[-1] == "p", "e o pais continua sendo a ultima coluna")
 
 ip_sem_dominio = reputacao.build_ip_result(
     "9.9.9.9", ABUSE_LIMPO, VT_LIMPO, None, "c", "p", "N/A",
     estado_abuse=core.FONTE_OK, estado_vt=core.FONTE_OK, estado_ibm=None)
-check(apresentacao.dominio_da_tabela(ip_sem_dominio, SEM_IBM["ip"]) == "-",
+check(apresentacao.dominio_da_tabela(ip_sem_dominio, TODAS["ip"]) == "-",
       "IP sem dominio mostra tracinho, nao 'N/A'")
 
 ip_abuse_fora = reputacao.build_ip_result(
     "9.9.9.9", None, VT_LIMPO, None, "c", "p", "N/A",
     estado_abuse=core.FONTE_INDISPONIVEL, estado_vt=core.FONTE_OK, estado_ibm=None)
-check(apresentacao.dominio_da_tabela(ip_abuse_fora, SEM_IBM["ip"]) == "!",
+check(apresentacao.dominio_da_tabela(ip_abuse_fora, TODAS["ip"]) == "!",
       "AbuseIPDB fora do ar marca a celula, em vez de afirmar que o IP nao tem dominio")
 
-sem_abuse = SEM_IBM["ip"] - {"abuse"}
+sem_abuse = TODAS["ip"] - {"abuse"}
 check(apresentacao.dominio_da_tabela(ip_com_dominio, sem_abuse) == "",
       "e com o AbuseIPDB desmarcado a celula fica vazia")
 check("dominio" in catalogo.colunas_ocultas("ip", sem_abuse),

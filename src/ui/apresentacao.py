@@ -34,7 +34,7 @@ ESTADO_TEXTO = {
     api.FONTE_SEM_DADOS: "source_no_data",
 }
 
-FONTES_NOMES = {"abuse": "AbuseIPDB", "vt": "VirusTotal", "ibm": "IBM X-Force",
+FONTES_NOMES = {"abuse": "AbuseIPDB", "vt": "VirusTotal",
                 "alien": "AlienVault", "md": "MetaDefender"}
 
 JOE_VEREDITO_KEYS = {"malicious": "joe_verdict_malicious",
@@ -238,45 +238,79 @@ def dividir_entrada(bruto):
     return [p for p in re.split(r"[\s,;]+", bruto or "") if p]
 
 
+def sem_repetidos(itens):
+    """Descarta repeticoes preservando a ordem de quem colou.
+
+    Lista extraida de log costuma trazer o mesmo indicador varias vezes, e cada repeticao
+    gastava a cota de todas as fontes para produzir uma linha identica na tabela.
+    """
+    vistos, unicos = set(), []
+    for item in itens:
+        if item not in vistos:
+            vistos.add(item)
+            unicos.append(item)
+    return unicos
+
+
+def ip_canonico(ip):
+    """Forma normalizada do IP, para 8.8.8.8 e 08.8.8.8 contarem como o mesmo."""
+    try:
+        return str(ipaddress.ip_address(ip))
+    except ValueError:
+        return ip
+
+
+def _com_repetidos(partes, repetidos):
+    if repetidos:
+        partes.append(f"{repetidos} {t('count_duplicate')}")
+    return " · ".join(partes)
+
+
 def contar_ips(bruto):
-    validos = invalidos = privados = 0
+    validos, invalidos, privados = [], 0, 0
     for item in dividir_entrada(bruto):
         if not is_valid_ip(item):
             invalidos += 1
         elif ipaddress.ip_address(item).is_private:
             privados += 1
         else:
-            validos += 1
-    if not (validos or invalidos or privados):
+            validos.append(ip_canonico(item))
+    unicos = sem_repetidos(validos)
+    if not (unicos or invalidos or privados):
         return ""
-    partes = [f"{validos} {t('count_valid')}"]
+    partes = [f"{len(unicos)} {t('count_valid')}"]
     if invalidos:
         partes.append(f"{invalidos} {t('count_invalid')}")
     if privados:
         partes.append(f"{privados} {t('count_private')}")
-    return " · ".join(partes)
+    return _com_repetidos(partes, len(validos) - len(unicos))
 
 
 def contar_hashes(bruto):
     itens = dividir_entrada(bruto)
     if not itens:
         return ""
-    validos = sum(1 for h in itens if re.fullmatch(r"[a-fA-F0-9]{32,64}", h))
-    partes = [f"{validos} {t('count_valid')}"]
-    if len(itens) - validos:
-        partes.append(f"{len(itens) - validos} {t('count_invalid')}")
-    return " · ".join(partes)
+    validos = [h.lower() for h in itens if re.fullmatch(r"[a-fA-F0-9]{32,64}", h)]
+    unicos = sem_repetidos(validos)
+    partes = [f"{len(unicos)} {t('count_valid')}"]
+    if len(itens) - len(validos):
+        partes.append(f"{len(itens) - len(validos)} {t('count_invalid')}")
+    return _com_repetidos(partes, len(validos) - len(unicos))
 
 
 def contar_dominios(bruto):
     itens = dividir_entrada(bruto)
     if not itens:
         return ""
-    validos = sum(1 for item in itens if dominio_valido(extrair_dominio(item)))
-    partes = [f"{validos} {t('count_valid')}"]
-    if len(itens) - validos:
-        partes.append(f"{len(itens) - validos} {t('count_invalid')}")
-    return " · ".join(partes)
+    # Conta como o mesmo o que a varredura vai consultar como o mesmo: e o dominio extraido,
+    # nao o texto colado, que decide a repeticao.
+    validos = [extrair_dominio(item).lower() for item in itens
+               if dominio_valido(extrair_dominio(item))]
+    unicos = sem_repetidos(validos)
+    partes = [f"{len(unicos)} {t('count_valid')}"]
+    if len(itens) - len(validos):
+        partes.append(f"{len(itens) - len(validos)} {t('count_invalid')}")
+    return _com_repetidos(partes, len(validos) - len(unicos))
 
 
 def _cabecalho(indicador, rotulo, index, total):
@@ -301,8 +335,6 @@ def relatorio_ip(data, index=None, total=1, fontes=None):
                       f"{texto_fonte(data['abuse_score'], estados.get('abuse'), '%')}")
     if ativa(fontes, "vt"):
         linhas.append(f"{t('vt_score')}: {texto_fonte(data['vt_score'], estados.get('vt'))}")
-    if data["ibm_score"] or estados.get("ibm") in api.ESTADOS_SEM_RESPOSTA:
-        linhas.append(f"{t('ibm_score')}: {texto_fonte(data['ibm_score'], estados.get('ibm'))}")
     if estados.get("md"):
         linhas.append(f"{t('md_score')}: {texto_fonte(md_placar(data), estados.get('md'))}")
     if ativa(fontes, "abuse"):
@@ -314,8 +346,6 @@ def relatorio_ip(data, index=None, total=1, fontes=None):
         linhas.append(f"- {data['links']['abuse']}")
     if ativa(fontes, "vt"):
         linhas.append(f"- {data['links']['vt']}")
-    if data["links"].get("ibm"):
-        linhas.append(f"- {data['links']['ibm']}")
     if data["links"].get("md"):
         linhas.append(f"- {data['links']['md']}")
     return "\n".join(linhas)
@@ -329,8 +359,6 @@ def _spec_planilha_ip():
         ("abuse", "csv_abuse_score",
          lambda d: texto_fonte(d["abuse_score"], _estado(d, "abuse"), "%")),
         ("vt", "csv_vt_score", lambda d: texto_fonte(d["vt_score"], _estado(d, "vt"))),
-        ("ibm", "csv_ibm_score",
-         lambda d: texto_fonte(d["ibm_score"] or "", _estado(d, "ibm"))),
         ("md", "csv_md_score", lambda d: texto_fonte(md_placar(d), _estado(d, "md"))),
         ("abuse", "csv_domain", lambda d: d["domain"]),
         ("local", "csv_country", lambda d: d["country"]),
@@ -338,7 +366,6 @@ def _spec_planilha_ip():
         ("abuse", "csv_last_report", lambda d: d["last_report"] or t("no_reports")),
         ("abuse", "csv_abuse_link", lambda d: d["links"]["abuse"]),
         ("vt", "csv_vt_link", lambda d: d["links"]["vt"]),
-        ("ibm", "csv_ibm_link", lambda d: d["links"]["ibm"] or ""),
         ("md", "csv_md_link", lambda d: d["links"].get("md") or ""),
     )
 
@@ -355,7 +382,6 @@ def colunas_ip(data, ultima, fontes=None):
     return (data["ip"], t(VERDICT_KEYS[data["status"]]),
             _celula(data, "abuse", fontes, lambda d: d["abuse_score"], "%"),
             _celula(data, "vt", fontes, lambda d: d["vt_score"]),
-            _celula(data, "ibm", fontes, lambda d: d["ibm_score"] or "-"),
             _celula(data, "md", fontes, lambda d: md_placar(d) or "-"),
             dominio_da_tabela(data, fontes),
             ultima)
@@ -402,8 +428,6 @@ def relatorio_hash(data, fontes=None, index=None, total=1):
         linhas.append(t("sources_incomplete").format(fontes=", ".join(data["fontes_indisponiveis"])))
     if ativa(fontes, "vt"):
         linhas.append(f"{t('vt_score')}: {texto_fonte(data['vt_score'], estados.get('vt'))}")
-    if ativa(fontes, "ibm"):
-        linhas.append(f"{t('ibm_score')}: {texto_fonte(data['ibm_score'], estados.get('ibm'))}")
     if ativa(fontes, "alien"):
         linhas.append(linha_alienvault(data, estados.get("alien")))
         linhas += linhas_otx(data)
@@ -414,8 +438,6 @@ def relatorio_hash(data, fontes=None, index=None, total=1):
     if ativa(fontes, "vt"):
         linhas.append(f"{t('last_analysis_vt')}: {data['ultima_analise'] or 'N/A'}")
         linhas.append(f"- {data['links']['vt']}")
-    if ativa(fontes, "ibm"):
-        linhas.append(f"- {data['links']['ibm']}")
     if ativa(fontes, "alien"):
         linhas.append(f"- {data['links']['alien']}")
     if data["links"].get("md"):
@@ -430,7 +452,6 @@ def _spec_planilha_hash():
         (None, "csv_hash", lambda d: d["hash"]),
         (None, "csv_verdict", lambda d: t(VERDICT_KEYS[d["status"]])),
         ("vt", "csv_vt_score", lambda d: texto_fonte(d["vt_score"], _estado(d, "vt"))),
-        ("ibm", "csv_ibm_score", lambda d: texto_fonte(d["ibm_score"], _estado(d, "ibm"))),
         ("alien", "csv_alien_score",
          lambda d: texto_fonte(alien_placar(d), _estado(d, "alien"))),
         ("md", "csv_md_score", lambda d: texto_fonte(md_placar(d), _estado(d, "md"))),
@@ -440,7 +461,6 @@ def _spec_planilha_hash():
         (None, "csv_file_name", nome_do_arquivo),
         ("vt", "csv_last_analysis", lambda d: d["ultima_analise"] or "N/A"),
         ("vt", "csv_vt_link", lambda d: d["links"]["vt"]),
-        ("ibm", "csv_ibm_link", lambda d: d["links"]["ibm"]),
         ("alien", "csv_alien_link", lambda d: d["links"]["alien"]),
         ("md", "csv_md_link", lambda d: d["links"].get("md") or ""),
         ("joe", "csv_joe_link", lambda d: d["links"].get("joe") or ""),
@@ -460,7 +480,6 @@ def colunas_hash(data, fontes=None):
     # linha, era a primeira a sair da tela em janela estreita.
     return (data["hash"], t(VERDICT_KEYS[data["status"]]), nome_do_arquivo(data),
             _celula(data, "vt", fontes, lambda d: d["vt_score"]),
-            _celula(data, "ibm", fontes, lambda d: d["ibm_score"]),
             _celula(data, "alien", fontes, alien_coluna),
             _celula(data, "md", fontes, lambda d: md_placar(d) or "-"),
             (joe_veredito(data) or "-") if ativa(fontes, "joe") else "-")
@@ -476,8 +495,6 @@ def relatorio_url(data, fontes=None, index=None, total=1):
         linhas.append(t("sources_incomplete").format(fontes=", ".join(data["fontes_indisponiveis"])))
     if ativa(fontes, "vt"):
         linhas.append(f"{t('vt_score')}: {texto_fonte(data['vt_score'], estados.get('vt'))}")
-    if ativa(fontes, "ibm"):
-        linhas.append(f"{t('ibm_score')}: {texto_fonte(data['ibm_score'], estados.get('ibm'))}")
     if ativa(fontes, "alien"):
         linhas.append(linha_alienvault(data, estados.get("alien")))
         linhas += linhas_otx(data)
@@ -485,8 +502,6 @@ def relatorio_url(data, fontes=None, index=None, total=1):
         linhas.append(f"{t('md_score')}: {texto_fonte(md_placar(data), estados.get('md'))}")
     if ativa(fontes, "vt"):
         linhas.append(f"- {data['links']['vt']}")
-    if ativa(fontes, "ibm"):
-        linhas.append(f"- {data['links']['ibm']}")
     if ativa(fontes, "alien"):
         linhas.append(f"- {data['links']['alien']}")
     if data["links"].get("md"):
@@ -499,12 +514,10 @@ def _spec_planilha_url():
         (None, "csv_domain", lambda d: d["url"]),
         (None, "csv_verdict", lambda d: t(VERDICT_KEYS[d["status"]])),
         ("vt", "csv_vt_score", lambda d: texto_fonte(d["vt_score"], _estado(d, "vt"))),
-        ("ibm", "csv_ibm_score", lambda d: texto_fonte(d["ibm_score"], _estado(d, "ibm"))),
         ("alien", "csv_alien_score",
          lambda d: texto_fonte(alien_placar(d), _estado(d, "alien"))),
         ("md", "csv_md_score", lambda d: texto_fonte(md_placar(d), _estado(d, "md"))),
         ("vt", "csv_vt_link", lambda d: d["links"]["vt"]),
-        ("ibm", "csv_ibm_link", lambda d: d["links"]["ibm"]),
         ("alien", "csv_alien_link", lambda d: d["links"]["alien"]),
         ("md", "csv_md_link", lambda d: d["links"].get("md") or ""),
     )
@@ -521,6 +534,5 @@ def linha_planilha_url(data, fontes):
 def colunas_url(data, fontes=None):
     return (data["url"], t(VERDICT_KEYS[data["status"]]), "-",
             _celula(data, "vt", fontes, lambda d: d["vt_score"]),
-            _celula(data, "ibm", fontes, lambda d: d["ibm_score"]),
             _celula(data, "alien", fontes, alien_coluna),
             _celula(data, "md", fontes, lambda d: md_placar(d) or "-"))

@@ -14,13 +14,11 @@ CATALOGO = {
         ("vt", "source_vt", API),
         ("md", "source_md", API),
         ("local", "source_ipinfo", API),
-        ("ibm", "source_ibm", NAVEGADOR),
     ),
     "hash": (
         ("vt", "source_vt", API),
         ("alien", "source_alien", API),
         ("md", "source_md", API),
-        ("ibm", "source_ibm", NAVEGADOR),
         ("joe", "source_joe", NAVEGADOR),
     ),
     "url": (
@@ -28,7 +26,6 @@ CATALOGO = {
         ("alien", "source_alien", API),
         ("md", "source_md", API),
         ("ips", "source_assoc_ips", API),
-        ("ibm", "source_ibm", NAVEGADOR),
     ),
 }
 
@@ -37,21 +34,16 @@ CATALOGO = {
 # associados: o dominio em si nunca tem placar ali. O AbuseIPDB governa duas na aba de IP --
 # o placar e o nome de dominio, que vem na mesma resposta e some junto com ela.
 COLUNAS = {
-    "ip": {"abuse": ("abuse", "dominio"), "vt": ("vt",), "ibm": ("ibm",), "md": ("md",),
-           "local": ("pais",)},
-    "hash": {"vt": ("vt",), "ibm": ("ibm",), "alien": ("alien",), "md": ("md",),
-             "joe": ("joe",)},
-    "url": {"vt": ("vt",), "ibm": ("ibm",), "alien": ("alien",), "md": ("md",),
-            "ips": ("abuse",)},
+    "ip": {"abuse": ("abuse", "dominio"), "vt": ("vt",), "md": ("md",), "local": ("pais",)},
+    "hash": {"vt": ("vt",), "alien": ("alien",), "md": ("md",), "joe": ("joe",)},
+    "url": {"vt": ("vt",), "alien": ("alien",), "md": ("md",), "ips": ("abuse",)},
 }
 
 
-# Continua no catalogo, mas fora da selecao inicial: em 2026 a IBM fechou o X-Force atras de
-# login IBMid, e nao ha como consultar sem ele. A sessao do portal tambem nao da para
-# guardar -- vive num cookie de sessao que o proprio X-Force invalida assim que ele aparece
-# em outro navegador. Ligada, a fonte so tem "exige login" a dizer, e isso bastava para todo
-# indicador sair como analise incompleta.
-DESLIGADAS_POR_PADRAO = frozenset({"ibm"})
+# Nenhuma fonte esta fora da selecao inicial hoje. O IBM X-Force saiu do catalogo em
+# 09/2026: a IBM fechou o portal atras de login e o acesso por API passou a exigir plano
+# comercial, entao a fonte nao tinha o que responder a ninguem.
+DESLIGADAS_POR_PADRAO = frozenset()
 
 
 def todas(aba):
@@ -65,6 +57,19 @@ def padrao(aba):
 
 def rapidas(aba):
     return {chave for chave, _rotulo, tipo in CATALOGO[aba] if tipo == API}
+
+
+def escolha_salva(aba, guardadas):
+    """Escolha do disco filtrada pelo catalogo de hoje, ou o padrao quando nao serve.
+
+    Fonte que saiu do catalogo entre versoes e ignorada, e escolha vazia cai no padrao: sem
+    isso um arquivo estragado poderia deixar a aba sem consultar fonte nenhuma, e a tela
+    diria "limpo" sem ter perguntado a ninguem.
+    """
+    if not isinstance(guardadas, dict):
+        return padrao(aba)
+    validas = {chave for chave in guardadas.get(aba) or () if chave in todas(aba)}
+    return validas or padrao(aba)
 
 
 def usa_navegador(aba, ativas):

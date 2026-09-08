@@ -160,20 +160,20 @@ app = gui.IPCheckerApp(root)
 gui.app = app
 app.driver_pool.boot_concluido.set()      # boot terminou sem nenhum driver
 
-app.fontes_hash_varredura = {"vt", "alien", "md", "ibm", "joe"}
+# O X-Force saiu do pool quando virou fonte de API; quem depende de navegador aqui e o
+# JoeSandbox.
+app.fontes_hash_varredura = {"vt", "alien", "md", "joe"}
 app.results_hash = []
-chamou_ibm = []
-aba_hash.check_hash_ibm = lambda d, h: chamou_ibm.append(h)
+chamou_joe = []
 aba_hash.check_hash_alienvault = lambda h: (core._otx_contexto({}), "link", core.FONTE_OK)
 aba_hash.check_hash_virustotal = lambda h: (None, core.FONTE_INDISPONIVEL)
-aba_hash.check_hash_joesandbox = lambda d, h: (None, "link")
+aba_hash.check_hash_joesandbox = lambda d, h: (chamou_joe.append(h), (None, "link"))[1]
 bloquear_rede(core)   # se algum mock vazar, a chamada real estoura aqui
 
 inicio = time.time()
 texto, status, colunas, estados = app.process_hash("a" * 32, 1)
 check(time.time() - inicio < 2, "process_hash retornou em vez de pendurar no pool vazio")
-check(not chamou_ibm, "nem tentou usar o X-Force sem driver")
-check(estados["ibm"] == core.FONTE_INDISPONIVEL, "X-Force marcado como indisponivel")
+check(not chamou_joe, "nem tentou usar o JoeSandbox sem driver")
 check(status == "incompleto", "veredito e incompleto, nao limpo")
 check(t("source_unavailable") in texto, "detalhe explica a falha")
 

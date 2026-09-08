@@ -91,14 +91,13 @@ class DriverMudo:
 IP_SIGILOSO = "203.0.113.77"
 HASH_SIGILOSO = "b" * 32
 antes = os.path.getsize(log.caminho_log())
-navegador.check_ip_ibm(DriverMudo(), IP_SIGILOSO)
 navegador.check_hash_joesandbox(DriverMudo(), HASH_SIGILOSO)
 novo = open(log.caminho_log(), encoding="utf-8").read()[antes:]
 
-check(novo.strip(), "os dois erros foram registrados, nao engolidos")
+check(novo.strip(), "o erro foi registrado, nao engolido")
 check(IP_SIGILOSO not in novo, "o IP consultado NAO foi para o arquivo")
 check(HASH_SIGILOSO not in novo, "o hash consultado NAO foi para o arquivo")
-check("X-Force" in novo and "JoeSandbox" in novo, "mas o registro diz qual fonte falhou")
+check("JoeSandbox" in novo, "mas o registro diz qual fonte falhou")
 
 print("\n[6] Preferencias de tela sobrevivem ao fechamento do app")
 import json  # noqa: E402

@@ -1,4 +1,5 @@
 """Widgets proprios: interruptor animado, entrada com contador e tabela de resultados."""
+import ipaddress
 import tkinter as tk
 import webbrowser
 from tkinter import scrolledtext, ttk
@@ -561,7 +562,19 @@ class ResultTable(tk.Frame):
 
     @staticmethod
     def _chave_ordem(valor):
+        """Numero antes de texto; IP pela ordem de rede, nao pela alfabetica.
+
+        Sem o caso do IP, ordenar a coluna comparava texto e punha 10.0.0.1 antes de 9.9.9.9
+        -- justamente o agrupamento por faixa que se procura ao clicar no cabecalho.
+        """
+        bruto = str(valor).strip()
         try:
-            return (0, float(str(valor).strip().rstrip("%")), "")
+            return (0, float(bruto.rstrip("%")), 0, "")
         except ValueError:
-            return (1, 0.0, str(valor).lower())
+            pass
+        try:
+            endereco = ipaddress.ip_address(bruto)
+            # Entre os dois numeros: depois dos placares, antes do texto solto.
+            return (1, 0.0, (endereco.version, int(endereco)), "")
+        except ValueError:
+            return (2, 0.0, 0, bruto.lower())
